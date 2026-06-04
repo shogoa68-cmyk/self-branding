@@ -8,220 +8,238 @@
 </head>
 <body>
 
-  <!-- ── セットアップ画面 ── -->
-  <div id="setupScreen" class="setup-screen">
-    <div class="setup-card">
-      <div class="setup-logo">✦ BrandMe</div>
-      <h1 class="setup-title">AIがあなたのブランドを加速する</h1>
-      <p class="setup-desc">
-        現在の自分と目指す人物像を入力するだけで、AIが
-        記事・フォローすべき人物・YouTube・コースをパーソナライズして推薦します。
-      </p>
-      <div class="form-group">
-        <label for="apiKeyInput">Anthropic API Key</label>
-        <div class="key-input-wrap">
-          <input type="password" id="apiKeyInput" placeholder="sk-ant-api03-...">
-          <button class="btn-toggle-key" id="toggleKeyBtn" type="button">表示</button>
-        </div>
-        <span class="hint">
-          <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">こちら</a>
-          から取得できます。キーはブラウザ内（localStorage）にのみ保存されます。
-        </span>
-      </div>
-      <button class="btn-primary btn-block" id="setupStartBtn">はじめる →</button>
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="logo"><span class="logo-star">✦</span> BrandMe</div>
+      <div class="header-tagline">セルフブランディング支援ツール</div>
     </div>
-  </div>
+  </header>
 
-  <!-- ── メインアプリ ── -->
-  <div id="mainApp" class="app" hidden>
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="profile">
+      <span>👤</span><span class="tab-label">プロフィール</span>
+    </button>
+    <button class="tab-btn" data-tab="hub">
+      <span>🔍</span><span class="tab-label">コンテンツ探索</span>
+    </button>
+    <button class="tab-btn" data-tab="brand">
+      <span>✍️</span><span class="tab-label">ブランド設計</span>
+    </button>
+    <button class="tab-btn" data-tab="plan">
+      <span>📅</span><span class="tab-label">行動計画</span>
+    </button>
+  </nav>
 
-    <header class="app-header">
-      <div class="header-inner">
-        <div class="logo"><span class="logo-star">✦</span> BrandMe</div>
-        <button class="icon-btn" id="settingsBtn" title="設定">⚙</button>
+  <main class="main-content">
+
+    <!-- ── プロフィールタブ ── -->
+    <section class="tab-content active" id="tab-profile">
+
+      <div class="section-header">
+        <span class="section-badge badge-current">現在の自分</span>
+        <p class="section-desc">あなたの現状を詳しく教えてください。具体的なほど精度が上がります。</p>
       </div>
-    </header>
+      <div class="card">
+        <div class="form-row">
+          <div class="form-group">
+            <label>年齢</label>
+            <input type="text" data-section="profile" data-field="age" placeholder="例: 28歳">
+          </div>
+          <div class="form-group">
+            <label>性別</label>
+            <select data-section="profile" data-field="gender">
+              <option value="">選択</option>
+              <option>男性</option><option>女性</option>
+              <option>その他</option><option>回答しない</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>現在の職業・役職</label>
+          <input type="text" data-section="profile" data-field="profession"
+            placeholder="例: スタートアップのソフトウェアエンジニア（5年目）">
+        </div>
+        <div class="form-group">
+          <label>これまでの経歴・経験</label>
+          <textarea data-section="profile" data-field="career" rows="3"
+            placeholder="例: 新卒でSIer入社 → 3年後スタートアップに転職。Webアプリ開発・チームリード経験あり。"></textarea>
+        </div>
+        <div class="form-group">
+          <label>得意なこと・スキル <span class="label-hint">（カンマ区切りで複数可）</span></label>
+          <textarea data-section="profile" data-field="skills" rows="2"
+            placeholder="例: TypeScript, React, Node.js, チームリード, 英語"></textarea>
+        </div>
+        <div class="form-group">
+          <label>趣味・興味関心</label>
+          <textarea data-section="profile" data-field="hobbies" rows="2"
+            placeholder="例: ビジネス書・SF読書、登山、テック系ポッドキャスト"></textarea>
+        </div>
+      </div>
 
-    <nav class="tab-nav">
-      <button class="tab-btn active" data-tab="profile">
-        <span>👤</span><span class="tab-label">プロフィール</span>
+      <div class="section-header">
+        <span class="section-badge badge-target">目指す人物像</span>
+        <p class="section-desc">どんな自分になりたいですか？できるだけ具体的に書いてください。</p>
+      </div>
+      <div class="card">
+        <div class="form-group">
+          <label>目指す人物像・ロール</label>
+          <textarea data-section="target" data-field="targetRole" rows="3"
+            placeholder="例: スタートアップのCTOとして技術と事業の両方をリードし、テックメディアにも登場するエンジニア起業家"></textarea>
+        </div>
+        <div class="form-group">
+          <label>具体的に達成したいゴール</label>
+          <textarea data-section="target" data-field="targetGoals" rows="3"
+            placeholder="例: ・技術系カンファレンスで登壇&#10;・副業で月20万円の収入&#10;・GitHubスター1000以上のOSSを作る"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>達成したい期間</label>
+            <select data-section="target" data-field="timeline">
+              <option value="">選択</option>
+              <option>3ヶ月</option><option>6ヶ月</option>
+              <option>1年</option><option>2〜3年</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>モチベーション・理由</label>
+          <textarea data-section="target" data-field="motivation" rows="2"
+            placeholder="例: 会社に依存しない収入と影響力を持ち、自分のビジョンでプロダクトを作りたい"></textarea>
+        </div>
+      </div>
+
+      <button class="btn-generate-main" id="generateBtn">
+        🔍 コンテンツ・推薦クエリを生成する
       </button>
-      <button class="tab-btn" data-tab="hub">
-        <span>🔍</span><span class="tab-label">コンテンツハブ</span>
-      </button>
-      <button class="tab-btn" data-tab="plan">
-        <span>📅</span><span class="tab-label">アクションプラン</span>
-      </button>
-    </nav>
 
-    <main class="main-content">
+    </section>
 
-      <!-- ── プロフィールタブ ── -->
-      <section class="tab-content active" id="tab-profile">
+    <!-- ── コンテンツ探索タブ ── -->
+    <section class="tab-content" id="tab-hub">
 
-        <div class="section-header">
-          <span class="section-badge badge-current">現在の自分</span>
-          <p class="section-desc">あなたの現状を詳しく教えてください。具体的なほど精度が上がります。</p>
-        </div>
-        <div class="card">
-          <div class="form-row">
-            <div class="form-group">
-              <label>年齢</label>
-              <input type="text" data-section="profile" data-field="age" placeholder="例: 28歳">
-            </div>
-            <div class="form-group">
-              <label>性別</label>
-              <select data-section="profile" data-field="gender">
-                <option value="">選択</option>
-                <option>男性</option><option>女性</option>
-                <option>その他</option><option>回答しない</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>現在の職業・役職</label>
-            <input type="text" data-section="profile" data-field="profession"
-              placeholder="例: ITスタートアップのソフトウェアエンジニア（5年目）">
-          </div>
-          <div class="form-group">
-            <label>これまでの経歴・経験</label>
-            <textarea data-section="profile" data-field="career" rows="3"
-              placeholder="例: 新卒でSIer入社 → 3年後スタートアップに転職。Webアプリ開発・チームリード経験あり。"></textarea>
-          </div>
-          <div class="form-group">
-            <label>得意なこと・スキル</label>
-            <textarea data-section="profile" data-field="skills" rows="2"
-              placeholder="例: TypeScript, React, Node.js, チームリード, 英語（TOEIC 800）"></textarea>
-          </div>
-          <div class="form-group">
-            <label>趣味・興味関心</label>
-            <textarea data-section="profile" data-field="hobbies" rows="2"
-              placeholder="例: ビジネス書・SF読書、登山、カメラ、テック系ポッドキャスト"></textarea>
-          </div>
-        </div>
-
-        <div class="section-header">
-          <span class="section-badge badge-target">目指す人物像</span>
-          <p class="section-desc">どんな自分になりたいですか？できるだけ具体的に書いてください。</p>
-        </div>
-        <div class="card">
-          <div class="form-group">
-            <label>目指す人物像・ロール</label>
-            <textarea data-section="target" data-field="targetRole" rows="3"
-              placeholder="例: スタートアップのCTOとして技術と事業の両方をリードし、テックメディアにも登場するエンジニア起業家"></textarea>
-          </div>
-          <div class="form-group">
-            <label>具体的に達成したいゴール</label>
-            <textarea data-section="target" data-field="targetGoals" rows="3"
-              placeholder="例: ・技術系カンファレンスで登壇&#10;・副業で月20万円の収入&#10;・GitHubスター1000以上のOSSを作る"></textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>達成したい期間</label>
-              <select data-section="target" data-field="timeline">
-                <option value="">選択</option>
-                <option>3ヶ月</option><option>6ヶ月</option>
-                <option>1年</option><option>2〜3年</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label>そのブランドを目指す理由・モチベーション</label>
-            <textarea data-section="target" data-field="motivation" rows="2"
-              placeholder="例: 会社に依存しない収入と影響力を持ち、自分のビジョンでプロダクトを作りたい"></textarea>
-          </div>
-        </div>
-
-        <button class="btn-analyze" id="analyzeBtn">
-          ✦ AIが分析・コンテンツを推薦する
-        </button>
-
-      </section>
-
-      <!-- ── コンテンツハブ ── -->
-      <section class="tab-content" id="tab-hub">
-
-        <div id="hubEmpty" class="empty-state">
-          <div class="empty-icon">🔍</div>
-          <p class="empty-title">プロフィールを入力してください</p>
-          <p class="empty-desc">「プロフィール」タブで現在の自分と目標を入力し、<br>「AIが分析・コンテンツを推薦する」を押してください</p>
-          <button class="btn-primary" data-goto="profile">プロフィールへ →</button>
-        </div>
-
-        <div id="hubContent" hidden>
-          <div id="analysisCard" class="analysis-card"></div>
-
-          <div class="rec-tabs">
-            <button class="rec-tab active" data-rec="articles">📰 記事・ブログ</button>
-            <button class="rec-tab" data-rec="people">👤 フォロー人物</button>
-            <button class="rec-tab" data-rec="videos">🎥 YouTube</button>
-            <button class="rec-tab" data-rec="courses">📚 コース・書籍</button>
-          </div>
-          <div id="rec-articles" class="rec-grid"></div>
-          <div id="rec-people"   class="rec-grid hidden"></div>
-          <div id="rec-videos"   class="rec-grid hidden"></div>
-          <div id="rec-courses"  class="rec-grid hidden"></div>
-
-          <div class="hub-actions">
-            <button class="btn-outline" id="refreshBtn">🔄 推薦を再生成する</button>
-          </div>
-        </div>
-
-      </section>
-
-      <!-- ── アクションプラン ── -->
-      <section class="tab-content" id="tab-plan">
-
-        <div id="planEmpty" class="empty-state">
-          <div class="empty-icon">📅</div>
-          <p class="empty-title">まず分析を実行してください</p>
-          <p class="empty-desc">プロフィールを入力してAI分析を実行すると<br>パーソナライズされたアクションプランが生成されます</p>
-          <button class="btn-primary" data-goto="profile">プロフィールへ →</button>
-        </div>
-
-        <div id="planContent" hidden>
-          <div id="planWeekSection"></div>
-          <div id="planMonthSection"></div>
-          <div id="planMilestones"></div>
-        </div>
-
-      </section>
-
-    </main>
-  </div>
-
-  <!-- ── 設定モーダル ── -->
-  <div class="modal-overlay hidden" id="settingsModal">
-    <div class="modal">
-      <div class="modal-header">
-        <h3>設定</h3>
-        <button class="btn-close" id="closeSettingsBtn">×</button>
+      <div id="hubEmpty" class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <p class="empty-title">プロフィールを入力してください</p>
+        <p class="empty-desc">「プロフィール」タブで現在の自分と目標を入力し、<br>「コンテンツ・推薦クエリを生成する」を押してください</p>
+        <button class="btn-primary" data-goto="profile">プロフィールへ →</button>
       </div>
-      <div class="form-group">
-        <label>Anthropic API Key</label>
-        <input type="password" id="apiKeyEdit" placeholder="sk-ant-...">
-      </div>
-      <div class="form-group">
-        <label>使用モデル</label>
-        <select id="modelSelect">
-          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5（高速・低コスト）</option>
-          <option value="claude-sonnet-4-6">Claude Sonnet 4.6（高精度）</option>
-        </select>
-      </div>
-      <div class="modal-footer">
-        <button class="btn-primary" id="saveSettingsBtn">保存</button>
-        <button class="btn-danger-ghost" id="clearDataBtn">すべてのデータを削除</button>
-      </div>
-    </div>
-  </div>
 
-  <!-- ── ローディング ── -->
-  <div class="loading-overlay hidden" id="loadingOverlay">
-    <div class="loading-card">
-      <div class="spinner"></div>
-      <p id="loadingMsg">AIが分析しています...</p>
-    </div>
-  </div>
+      <div id="hubContent" hidden>
+        <div class="keyword-bar" id="keywordBar"></div>
+
+        <div class="rec-tabs">
+          <button class="rec-tab active" data-rec="articles">📰 記事・ブログ</button>
+          <button class="rec-tab" data-rec="people">👤 フォロー人物</button>
+          <button class="rec-tab" data-rec="videos">🎥 YouTube</button>
+          <button class="rec-tab" data-rec="courses">📚 コース・書籍</button>
+        </div>
+        <div id="rec-articles" class="rec-grid"></div>
+        <div id="rec-people"   class="rec-grid hidden"></div>
+        <div id="rec-videos"   class="rec-grid hidden"></div>
+        <div id="rec-courses"  class="rec-grid hidden"></div>
+
+        <div class="hub-actions">
+          <button class="btn-outline" id="regenBtn">🔄 クエリを再生成する</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── ブランド設計タブ ── -->
+    <section class="tab-content" id="tab-brand">
+
+      <div class="section-header">
+        <h2>ブランドステートメント</h2>
+        <p class="section-desc">プロフィール情報から自動生成します。編集してご自身の言葉に整えてください。</p>
+      </div>
+      <div class="card">
+        <button class="btn-sub-generate" id="genStatementBtn">✦ ステートメントを生成する</button>
+        <div class="gen-block" id="statementBlock">
+          <p class="gen-placeholder">上のボタンを押すと生成されます</p>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <h2>エレベーターピッチ <span class="sub-heading">（30秒バージョン）</span></h2>
+      </div>
+      <div class="card">
+        <div class="gen-block" id="pitchBlock">
+          <p class="gen-placeholder">ステートメントを生成するとピッチも作成されます</p>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <h2>SNS プロフィール文</h2>
+        <p class="section-desc">各プラットフォームに最適化された文章を生成します。コピーしてすぐに使えます。</p>
+      </div>
+
+      <div class="card sns-gen-card">
+        <div class="sns-card-head">
+          <span class="sns-dot" style="background:#000">X</span>
+          <div><strong>X (Twitter)</strong> <span class="char-limit">最大160文字</span></div>
+        </div>
+        <textarea class="sns-textarea" id="xText" rows="3" placeholder="生成ボタンを押してください..."></textarea>
+        <div class="sns-card-foot">
+          <span class="char-counter" id="xCount">0 / 160文字</span>
+          <button class="btn-copy" data-target="xText">📋 コピー</button>
+        </div>
+      </div>
+
+      <div class="card sns-gen-card">
+        <div class="sns-card-head">
+          <span class="sns-dot" style="background:#0A66C2">in</span>
+          <div><strong>LinkedIn</strong> <span class="char-limit">ヘッドライン 最大220文字</span></div>
+        </div>
+        <textarea class="sns-textarea" id="linkedinText" rows="3" placeholder="生成ボタンを押してください..."></textarea>
+        <div class="sns-card-foot">
+          <span class="char-counter" id="linkedinCount">0 / 220文字</span>
+          <button class="btn-copy" data-target="linkedinText">📋 コピー</button>
+        </div>
+      </div>
+
+      <div class="card sns-gen-card">
+        <div class="sns-card-head">
+          <span class="sns-dot" style="background:#24292F">GH</span>
+          <div><strong>GitHub</strong> <span class="char-limit">最大160文字</span></div>
+        </div>
+        <textarea class="sns-textarea" id="githubText" rows="2" placeholder="生成ボタンを押してください..."></textarea>
+        <div class="sns-card-foot">
+          <span class="char-counter" id="githubCount">0 / 160文字</span>
+          <button class="btn-copy" data-target="githubText">📋 コピー</button>
+        </div>
+      </div>
+
+      <div class="card sns-gen-card">
+        <div class="sns-card-head">
+          <span class="sns-dot" style="background:#21BDDB">W</span>
+          <div><strong>Wantedly</strong> <span class="char-limit">自己紹介 最大500文字</span></div>
+        </div>
+        <textarea class="sns-textarea" id="wantedlyText" rows="6" placeholder="生成ボタンを押してください..."></textarea>
+        <div class="sns-card-foot">
+          <span class="char-counter" id="wantedlyCount">0 / 500文字</span>
+          <button class="btn-copy" data-target="wantedlyText">📋 コピー</button>
+        </div>
+      </div>
+
+      <button class="btn-generate-main" id="genSnsBtn">✦ SNSプロフィールを一括生成する</button>
+
+    </section>
+
+    <!-- ── 行動計画タブ ── -->
+    <section class="tab-content" id="tab-plan">
+
+      <div class="checklist-progress-card">
+        <div class="cl-bar-wrap">
+          <div class="cl-bar"><div class="cl-bar-fill" id="clFill"></div></div>
+        </div>
+        <span class="cl-label" id="clLabel">0 / 0 完了</span>
+      </div>
+
+      <div id="checklistContainer"></div>
+
+    </section>
+
+  </main>
 
   <div class="toast" id="toast"></div>
 
