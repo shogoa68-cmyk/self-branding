@@ -1,474 +1,504 @@
 'use strict';
 
-// ─── State ───────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-const DEFAULTS = {
-  profile: {
-    name: '', nameEn: '', title: '', company: '',
-    tagline: '', bio: '',
-    snsX: '', snsLinkedIn: '', snsGitHub: '', snsNote: '',
-  },
-  identity: {
-    strength: '', values: [], targetAudience: '', uniqueValue: '', mission: '',
-  },
-  skills: [],
-  statement: '',
-  pitch: '',
-  snsTexts: { x: '', linkedin: '', github: '', wantedly: '' },
-  checklist: {},
+const STORAGE_KEY = 'brandme_v2';
+
+const PLATFORMS = {
+  google:   { label: 'Google',   bg: '#4285F4', url: q => `https://www.google.com/search?q=${q}` },
+  note:     { label: 'Note',     bg: '#41C9B4', url: q => `https://note.com/search?q=${q}` },
+  medium:   { label: 'Medium',   bg: '#191919', url: q => `https://medium.com/search?q=${q}` },
+  x:        { label: 'X',        bg: '#000000', url: q => `https://twitter.com/search?q=${q}` },
+  linkedin: { label: 'LinkedIn', bg: '#0A66C2', url: q => `https://www.linkedin.com/search/results/people/?keywords=${q}` },
+  youtube:  { label: 'YouTube',  bg: '#FF0000', url: q => `https://www.youtube.com/results?search_query=${q}` },
+  udemy:    { label: 'Udemy',    bg: '#A435F0', url: q => `https://www.udemy.com/courses/search/?q=${q}` },
+  coursera: { label: 'Coursera', bg: '#0056D2', url: q => `https://www.coursera.org/search?query=${q}` },
+  amazon:   { label: 'Amazon',   bg: '#FF9900', url: q => `https://www.amazon.co.jp/s?k=${q}` },
 };
+
+const CAT_ICONS = { content: '📝', network: '🤝', skill: '⚡', output: '🚀' };
+
+const SYSTEM_PROMPT = `あなたはセルフブランディング専門のAIコーチです。
+ユーザーの現在のプロフィールと目指す人物像を分析し、具体的で実行可能な推薦を提供します。
+
+【重要な指針】
+- 推薦する人物は必ず実在する著名人・インフルエンサーにしてください
+- コース・書籍は実際に存在するものにしてください
+- 検索クエリは実際に有益な結果が得られるものにしてください
+- 日本語ユーザーには日本語コンテンツを優先し、英語の質の高いコンテンツも含めてください
+- 各カテゴリにちょうど5件ずつ推薦してください
+- 今週のアクションは5件、今月のアクションは5件にしてください
+
+必ず以下のJSON形式のみで回答してください（コードブロック・マークダウン・説明文は一切不要）:
+
+{
+  "gap_analysis": {
+    "summary": "現在の状態と目標のギャップの要約（80〜120字）",
+    "strengths": ["活かせる強み（3つ）"],
+    "development_areas": ["成長が必要な領域（3つ）"],
+    "key_insight": "最も重要な気づき（40〜60字）"
+  },
+  "recommendations": {
+    "articles": [
+      {
+        "title": "記事タイトルまたはトピック名",
+        "description": "なぜこれが役立つか（40〜60字）",
+        "search_query": "Google検索クエリ",
+        "platform": "google"
+      }
+    ],
+    "people": [
+      {
+        "name": "フォローすべき人物名（実在する人物）",
+        "description": "この人物からどんな学びが得られるか（40〜60字）",
+        "search_query": "SNS上での検索クエリ",
+        "platform": "x"
+      }
+    ],
+    "videos": [
+      {
+        "title": "YouTube動画またはチャンネル名",
+        "description": "視聴から得られる学び（40〜60字）",
+        "search_query": "YouTube検索クエリ",
+        "channel": "チャンネル名（わかれば）"
+      }
+    ],
+    "courses": [
+      {
+        "title": "コースまたは書籍タイトル",
+        "description": "習得できるスキル・知識（40〜60字）",
+        "search_query": "プラットフォーム上での検索クエリ",
+        "platform": "udemy"
+      }
+    ]
+  },
+  "action_plan": {
+    "this_week": [
+      { "task": "具体的なアクション（1文で）", "category": "content" }
+    ],
+    "this_month": [
+      { "task": "具体的なアクション（1文で）", "category": "skill" }
+    ],
+    "milestones": [
+      { "period": "3ヶ月後", "goal": "達成すべきマイルストーン" },
+      { "period": "6ヶ月後", "goal": "達成すべきマイルストーン" },
+      { "period": "1年後",   "goal": "達成すべきマイルストーン" }
+    ]
+  }
+}`;
+
+// ── State ─────────────────────────────────────────────────────────────────────
 
 let state;
 
 function loadState() {
   try {
-    const raw = localStorage.getItem('brandme_state');
-    state = raw ? { ...JSON.parse(JSON.stringify(DEFAULTS)), ...JSON.parse(raw) } : JSON.parse(JSON.stringify(DEFAULTS));
-    // ensure nested objects exist
-    state.profile   = { ...DEFAULTS.profile,   ...(state.profile || {}) };
-    state.identity  = { ...DEFAULTS.identity,  ...(state.identity || {}) };
-    state.snsTexts  = { ...DEFAULTS.snsTexts,  ...(state.snsTexts || {}) };
+    const raw = localStorage.getItem(STORAGE_KEY);
+    state = raw ? JSON.parse(raw) : defaultState();
+    // ensure nested objects
+    state.profile   = { ...defaultState().profile,  ...(state.profile  || {}) };
+    state.target    = { ...defaultState().target,   ...(state.target   || {}) };
     state.checklist = state.checklist || {};
     state.skills    = Array.isArray(state.skills) ? state.skills : [];
-    if (!Array.isArray(state.identity.values)) state.identity.values = [];
-  } catch (_) {
-    state = JSON.parse(JSON.stringify(DEFAULTS));
+  } catch {
+    state = defaultState();
   }
+}
+
+function defaultState() {
+  return {
+    apiKey:    '',
+    model:     'claude-haiku-4-5-20251001',
+    profile:   { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '' },
+    target:    { targetRole: '', targetGoals: '', timeline: '', motivation: '' },
+    analysis:  null,
+    checklist: {},
+  };
 }
 
 function saveState() {
-  localStorage.setItem('brandme_state', JSON.stringify(state));
-  updateProgress();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ── Utils ─────────────────────────────────────────────────────────────────────
 
 function esc(str) {
-  return String(str)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(str || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 let toastTimer;
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg;
-  t.classList.add('show');
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast show ${type}`;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2400);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
 }
 
-function copyText(text) {
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(text).then(() => showToast('クリップボードにコピーしました！'));
-  } else {
-    const el = document.createElement('textarea');
-    el.value = text;
-    el.style.position = 'fixed';
-    el.style.opacity = '0';
-    document.body.appendChild(el);
-    el.select();
-    document.execCommand('copy');
-    document.body.removeChild(el);
-    showToast('クリップボードにコピーしました！');
+function setLoading(show, msg = 'AIが分析しています...') {
+  document.getElementById('loadingOverlay').classList.toggle('hidden', !show);
+  document.getElementById('loadingMsg').textContent = msg;
+}
+
+function platformUrl(key, query) {
+  const q = encodeURIComponent(query);
+  return (PLATFORMS[key] || PLATFORMS.google).url(q);
+}
+
+function platformBadge(key) {
+  const p = PLATFORMS[key] || { label: key, bg: '#6366F1' };
+  return `<span class="platform-badge" style="background:${p.bg}">${esc(p.label)}</span>`;
+}
+
+// ── Setup Screen ──────────────────────────────────────────────────────────────
+
+function initSetup() {
+  const input  = document.getElementById('apiKeyInput');
+  const toggle = document.getElementById('toggleKeyBtn');
+
+  toggle.addEventListener('click', () => {
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    toggle.textContent = show ? '隠す' : '表示';
+  });
+
+  document.getElementById('setupStartBtn').addEventListener('click', () => applyApiKey(input.value.trim()));
+  input.addEventListener('keypress', e => { if (e.key === 'Enter') applyApiKey(input.value.trim()); });
+}
+
+function applyApiKey(key) {
+  if (!key.startsWith('sk-ant-')) {
+    showToast('有効なAPIキーを入力してください（sk-ant- で始まります）', 'error');
+    return;
   }
+  state.apiKey = key;
+  saveState();
+  showApp();
 }
 
-// ─── Tab navigation ──────────────────────────────────────────────────────────
+function showApp() {
+  document.getElementById('setupScreen').hidden = true;
+  document.getElementById('mainApp').hidden = false;
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${name}`));
+}
 
 function initTabs() {
   document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      btn.classList.add('active');
-      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
-    });
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+  // data-goto buttons in empty states
+  document.querySelectorAll('[data-goto]').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.goto));
   });
 }
 
-// ─── Generic form binding ────────────────────────────────────────────────────
+// ── Form Binding ──────────────────────────────────────────────────────────────
 
 function initForms() {
   document.querySelectorAll('[data-section][data-field]').forEach(el => {
     const { section, field } = el.dataset;
     el.value = state[section]?.[field] ?? '';
-
     el.addEventListener('input', () => {
       state[section][field] = el.value;
       saveState();
-      updateCharCounts();
-    });
-  });
-  updateCharCounts();
-}
-
-function updateCharCounts() {
-  const tagline = document.getElementById('tagline');
-  const bio     = document.getElementById('bio');
-  if (tagline) document.getElementById('taglineCount').textContent = `${tagline.value.length} / 50文字`;
-  if (bio)     document.getElementById('bioCount').textContent     = `${bio.value.length} / 400文字`;
-}
-
-// ─── Values ──────────────────────────────────────────────────────────────────
-
-function initValues() {
-  document.querySelectorAll('.value-chip').forEach(chip => {
-    if (state.identity.values.includes(chip.dataset.value)) chip.classList.add('selected');
-
-    chip.addEventListener('click', () => {
-      const v = chip.dataset.value;
-      if (chip.classList.contains('selected')) {
-        chip.classList.remove('selected');
-        state.identity.values = state.identity.values.filter(x => x !== v);
-      } else if (state.identity.values.length < 3) {
-        chip.classList.add('selected');
-        state.identity.values.push(v);
-      } else {
-        showToast('価値観は最大3つまで選択できます');
-        return;
-      }
-      saveState();
     });
   });
 }
 
-// ─── Skills ──────────────────────────────────────────────────────────────────
+// ── Claude API ────────────────────────────────────────────────────────────────
 
-const LEVEL_LABELS = ['入門', '初級', '中級', '上級', 'エキスパート'];
-const CATEGORY_JP  = { technical: 'テクニカル', business: 'ビジネス', soft: 'ソフトスキル', language: '語学' };
-
-function initSkills() {
-  const slider = document.getElementById('skillLevel');
-  slider.addEventListener('input', () => {
-    document.getElementById('skillLevelLabel').textContent = LEVEL_LABELS[slider.value - 1];
+async function callClaude(userMsg) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': state.apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: state.model,
+      max_tokens: 4096,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMsg }],
+    }),
   });
 
-  document.getElementById('addSkillBtn').addEventListener('click', addSkill);
-  document.getElementById('skillName').addEventListener('keypress', e => { if (e.key === 'Enter') addSkill(); });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const status = res.status;
+    if (status === 401) throw new Error('APIキーが無効です。設定を確認してください。');
+    if (status === 429) throw new Error('レート制限に達しました。しばらく待ってから再試行してください。');
+    throw new Error(err.error?.message || `APIエラー (${status})`);
+  }
 
-  renderSkills();
+  const data = await res.json();
+  const text = data.content[0].text.trim();
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Claude sometimes wraps JSON in a code block despite instructions
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('レスポンスの解析に失敗しました。再度お試しください。');
+  }
 }
 
-function addSkill() {
-  const name  = document.getElementById('skillName').value.trim();
-  const cat   = document.getElementById('skillCategory').value;
-  const level = parseInt(document.getElementById('skillLevel').value, 10);
+function buildPrompt() {
+  const { profile: p, target: t } = state;
+  return `以下のユーザー情報を分析し、セルフブランディング支援のためのコンテンツ推薦とアクションプランを生成してください。
 
-  if (!name) { showToast('スキル名を入力してください'); return; }
-  if (state.skills.some(s => s.name === name)) { showToast('すでに追加されています'); return; }
+【現在のプロフィール】
+年齢: ${p.age || '未入力'}
+性別: ${p.gender || '未入力'}
+職業・役職: ${p.profession || '未入力'}
+経歴・経験: ${p.career || '未入力'}
+得意なこと・スキル: ${p.skills || '未入力'}
+趣味・興味関心: ${p.hobbies || '未入力'}
 
-  state.skills.push({ id: Date.now(), name, category: cat, level });
-  document.getElementById('skillName').value = '';
-  saveState();
-  renderSkills();
+【目指す人物像・目標】
+目指すロール: ${t.targetRole || '未入力'}
+達成したいゴール: ${t.targetGoals || '未入力'}
+達成期間: ${t.timeline || '未入力'}
+モチベーション: ${t.motivation || '未入力'}`;
 }
 
-function deleteSkill(id) {
-  state.skills = state.skills.filter(s => s.id !== id);
-  saveState();
-  renderSkills();
-}
+async function runAnalysis() {
+  if (!state.apiKey) { showToast('APIキーを設定してください', 'error'); return; }
 
-function renderSkills() {
-  const list = document.getElementById('skillsList');
-  if (!state.skills.length) {
-    list.innerHTML = '<div class="skills-empty">スキルをまだ追加していません。上のフォームから追加してください。</div>';
+  const hasProfile = Object.values(state.profile).some(v => v.trim());
+  const hasTarget  = Object.values(state.target).some(v => v.trim());
+  if (!hasProfile || !hasTarget) {
+    showToast('現在の自分と目指す人物像を入力してください', 'error');
     return;
   }
 
-  list.innerHTML = state.skills.map(s => `
-    <div class="skill-item">
-      <div class="skill-info">
-        <div class="skill-name">${esc(s.name)}</div>
-        <span class="category-badge ${s.category}">${CATEGORY_JP[s.category]}</span>
+  setLoading(true, 'AIがプロフィールを分析しています...');
+  try {
+    const result = await callClaude(buildPrompt());
+    state.analysis  = result;
+    state.checklist = {};
+    saveState();
+    renderHub();
+    renderPlan();
+    switchTab('hub');
+    showToast('分析が完了しました！');
+  } catch (err) {
+    showToast(err.message, 'error');
+  } finally {
+    setLoading(false);
+  }
+}
+
+// ── Hub ───────────────────────────────────────────────────────────────────────
+
+function renderHub() {
+  const { analysis } = state;
+  const isEmpty = !analysis;
+  document.getElementById('hubEmpty').hidden   = !isEmpty;
+  document.getElementById('hubContent').hidden =  isEmpty;
+  if (isEmpty) return;
+
+  renderGapAnalysis(analysis.gap_analysis || {});
+  renderRecs(analysis.recommendations || {});
+}
+
+function renderGapAnalysis(gap) {
+  document.getElementById('analysisCard').innerHTML = `
+    <div class="analysis-summary">
+      <div class="analysis-label">✦ AI 分析結果</div>
+      <p class="analysis-text">${esc(gap.summary || '')}</p>
+      <div class="analysis-insight">"${esc(gap.key_insight || '')}"</div>
+    </div>
+    <div class="analysis-cols">
+      <div class="analysis-col">
+        <div class="col-title">💪 活かせる強み</div>
+        ${(gap.strengths || []).map(s => `<div class="analysis-item">${esc(s)}</div>`).join('')}
       </div>
-      <div class="skill-bar-wrap">
-        <div class="skill-level-text">${LEVEL_LABELS[s.level - 1]}</div>
-        <div class="skill-bar">
-          <div class="skill-bar-fill" style="width:${s.level * 20}%"></div>
-        </div>
+      <div class="analysis-col">
+        <div class="col-title">🎯 成長が必要な領域</div>
+        ${(gap.development_areas || []).map(d => `<div class="analysis-item">${esc(d)}</div>`).join('')}
       </div>
-      <button class="skill-delete" data-id="${s.id}" title="削除">×</button>
-    </div>
-  `).join('');
-
-  list.querySelectorAll('.skill-delete').forEach(btn => {
-    btn.addEventListener('click', () => deleteSkill(Number(btn.dataset.id)));
-  });
+    </div>`;
 }
 
-// ─── Statement generation ────────────────────────────────────────────────────
+function renderRecs({ articles = [], people = [], videos = [], courses = [] }) {
+  document.getElementById('rec-articles').innerHTML = articles.map(item =>
+    recCard(item.platform || 'google', item.title, item.description, item.search_query)
+  ).join('');
 
-const VALUE_JP = {
-  innovation:'イノベーション', integrity:'誠実さ', growth:'成長',
-  collaboration:'協働', creativity:'創造性', impact:'社会的インパクト',
-  quality:'品質', learning:'学び', diversity:'多様性',
-  sustainability:'持続可能性', simplicity:'シンプルさ', empowerment:'人の力を引き出すこと',
-};
+  document.getElementById('rec-people').innerHTML = people.map(item =>
+    recCard(item.platform || 'x', item.name, item.description, item.search_query)
+  ).join('');
 
-function initStatement() {
-  document.getElementById('generateBtn').addEventListener('click', generateStatement);
+  document.getElementById('rec-videos').innerHTML = videos.map(item => {
+    const sub = item.channel
+      ? `<span class="sub-tag">${esc(item.channel)}</span>`
+      : '';
+    return recCard('youtube', item.title, item.description, item.search_query, sub);
+  }).join('');
 
-  if (state.statement) renderStatement(state.statement, state.pitch);
+  document.getElementById('rec-courses').innerHTML = courses.map(item =>
+    recCard(item.platform || 'udemy', item.title, item.description, item.search_query)
+  ).join('');
 }
 
-function generateStatement() {
-  const { name, title, tagline } = state.profile;
-  const { strength, values, targetAudience, uniqueValue, mission } = state.identity;
-
-  const nm  = name           || 'あなた';
-  const ttl = title          || 'プロフェッショナル';
-  const aud = targetAudience || 'クライアント・仲間';
-  const str = strength       || '独自のスキルセット';
-  const uv  = uniqueValue    || '独自の視点と経験';
-  const ms  = mission        || 'より良い未来を共に作ること';
-  const tag = tagline        || ms;
-  const vls = values.length  ? values.map(v => VALUE_JP[v]).join('・') : '誠実さと品質';
-
-  state.statement = [
-    `私は、${ttl}として${aud}に価値を提供する${nm}です。`,
-    '',
-    `【強み】\n${str}`,
-    '',
-    `【大切にしていること】\n${vls}`,
-    '',
-    `【ユニークな提供価値】\n${uv}`,
-    '',
-    `【ミッション】\n${ms}`,
-  ].join('\n');
-
-  state.pitch = `${nm}といいます。${ttl}として、${aud}が抱える課題を${str}で解決しています。「${tag}」をモットーに活動しています。`;
-
-  saveState();
-  renderStatement(state.statement, state.pitch);
-  showToast('ブランドステートメントを生成しました！');
+function recCard(platformKey, title, description, query, extraTop = '') {
+  const p   = PLATFORMS[platformKey] || PLATFORMS.google;
+  const url = platformUrl(platformKey, query || title);
+  return `
+    <div class="rec-card">
+      <div class="rec-card-top">
+        <span class="platform-badge" style="background:${p.bg}">${p.label}</span>
+        ${extraTop}
+      </div>
+      <div class="rec-title">${esc(title)}</div>
+      <div class="rec-desc">${esc(description)}</div>
+      <a class="rec-link" href="${url}" target="_blank" rel="noopener">検索する →</a>
+    </div>`;
 }
 
-function renderStatement(stmt, pitch) {
-  renderGenerated('statementBlock', stmt, () => { state.statement = document.getElementById('statementBlock').querySelector('textarea').value; saveState(); });
-  renderGenerated('pitchBlock',     pitch, () => { state.pitch     = document.getElementById('pitchBlock').querySelector('textarea').value;     saveState(); });
-}
-
-function renderGenerated(blockId, text, onEdit) {
-  const block = document.getElementById(blockId);
-  block.innerHTML = `
-    <div class="generated-textarea-wrap">
-      <textarea rows="${Math.max(4, text.split('\n').length + 1)}">${esc(text)}</textarea>
-    </div>
-    <div class="generated-actions">
-      <button class="btn-copy">📋 コピーする</button>
-    </div>
-  `;
-  const ta = block.querySelector('textarea');
-  ta.addEventListener('input', onEdit);
-  block.querySelector('.btn-copy').addEventListener('click', () => copyText(ta.value));
-}
-
-// ─── SNS profile generation ──────────────────────────────────────────────────
-
-function initSns() {
-  document.getElementById('generateSnsBtn').addEventListener('click', generateSns);
-
-  document.querySelectorAll('.btn-copy[data-target]').forEach(btn => {
-    btn.addEventListener('click', () => copyText(document.getElementById(btn.dataset.target).value));
-  });
-
-  [['xText','xCount',160],['linkedinText','linkedinCount',220],
-   ['githubText','githubCount',160],['wantedlyText','wantedlyCount',500]
-  ].forEach(([id, cid, limit]) => {
-    document.getElementById(id).addEventListener('input', e => updateSnsCounter(cid, e.target.value.length, limit));
-  });
-
-  // restore saved texts
-  if (state.snsTexts.x)         setSns('xText',        'xCount',        state.snsTexts.x,        160);
-  if (state.snsTexts.linkedin)  setSns('linkedinText',  'linkedinCount', state.snsTexts.linkedin,  220);
-  if (state.snsTexts.github)    setSns('githubText',    'githubCount',   state.snsTexts.github,    160);
-  if (state.snsTexts.wantedly)  setSns('wantedlyText',  'wantedlyCount', state.snsTexts.wantedly,  500);
-}
-
-function setSns(taId, countId, text, limit) {
-  document.getElementById(taId).value = text;
-  updateSnsCounter(countId, text.length, limit);
-}
-
-function updateSnsCounter(countId, len, limit) {
-  const el = document.getElementById(countId);
-  el.textContent = `${len} / ${limit} 文字`;
-  el.classList.toggle('over', len > limit);
-}
-
-function generateSns() {
-  const { name, title, tagline, snsNote } = state.profile;
-  const { strength, values, targetAudience, uniqueValue, mission } = state.identity;
-
-  const nm  = name || 'あなた';
-  const ttl = title || 'プロフェッショナル';
-  const tag = tagline || mission || '';
-  const str = strength || '';
-  const vls = values.length ? values.map(v => VALUE_JP[v]).join('・') : '';
-
-  const topTech = state.skills.filter(s => s.category === 'technical').sort((a,b) => b.level - a.level).slice(0,5).map(s => s.name);
-  const topAll  = state.skills.sort((a,b) => b.level - a.level).slice(0,5).map(s => s.name);
-
-  // X (160 chars)
-  let x = `${ttl}`;
-  if (tag) x += ` | ${tag}`;
-  if (topAll.length) x += ` | ${topAll.slice(0,3).join(' / ')}`;
-  if (snsNote) x += ` | 📝 ${snsNote}`;
-  x = x.slice(0, 160);
-
-  // LinkedIn headline (220 chars)
-  let li = `${ttl}`;
-  if (targetAudience) li += ` | ${targetAudience}の支援`;
-  if (tag) li += ` | ${tag}`;
-  if (topAll.length) li += ` | ${topAll.join(' / ')}`;
-  li = li.slice(0, 220);
-
-  // GitHub (160 chars)
-  let gh = `${ttl}`;
-  if (topTech.length) gh += ` | ${topTech.join(' / ')}`;
-  if (snsNote) gh += ` | 📝 ${snsNote}`;
-  gh = gh.slice(0, 160);
-
-  // Wantedly (500 chars)
-  const parts = [`【${ttl}】`];
-  if (tag) parts.push('', tag);
-  if (str) parts.push('', str);
-  if (vls) parts.push('', `【大切にしていること】\n${vls.split('・').map(v => `・${v}`).join('\n')}`);
-  if (mission) parts.push('', `【目指していること】\n${mission}`);
-  if (topAll.length) parts.push('', `【スキル】\n${topAll.join(' / ')}`);
-  const wa = parts.join('\n').slice(0, 500);
-
-  state.snsTexts = { x, linkedin: li, github: gh, wantedly: wa };
-  saveState();
-
-  setSns('xText',        'xCount',        x,  160);
-  setSns('linkedinText', 'linkedinCount', li,  220);
-  setSns('githubText',   'githubCount',   gh,  160);
-  setSns('wantedlyText', 'wantedlyCount', wa,  500);
-
-  showToast('SNSプロフィールを生成しました！');
-}
-
-// ─── Checklist ───────────────────────────────────────────────────────────────
-
-const CHECKLIST = [
-  {
-    category: 'ブランド基盤',
-    items: [
-      { id: 'b1', title: 'ブランドコンセプトを定義する',     desc: '強み・価値観・ターゲットを明確にする' },
-      { id: 'b2', title: 'ブランドステートメントを完成させる', desc: '自分を一言で表す文章を仕上げる' },
-      { id: 'b3', title: 'ブランドカラー・フォントを決める',  desc: '一貫したビジュアルアイデンティティを確立する' },
-      { id: 'b4', title: 'プロフィール写真を用意する',        desc: '清潔感があり、プロらしい写真を選ぶ' },
-    ],
-  },
-  {
-    category: 'オンラインプレゼンス',
-    items: [
-      { id: 'o1', title: 'X (Twitter) プロフィールを最適化',   desc: 'Bio・ヘッダー画像・固定ポストを整える' },
-      { id: 'o2', title: 'LinkedIn プロフィールを完成させる',  desc: '職歴・スキル・推薦文を充実させる' },
-      { id: 'o3', title: 'GitHub プロフィール README を作成', desc: 'README.md で自己紹介とプロジェクトをアピール' },
-      { id: 'o4', title: 'Wantedly プロフィールを更新',        desc: 'ビジョン・バリューを記入する' },
-      { id: 'o5', title: 'Note でブログを始める',              desc: '専門知識を発信してオーソリティを確立する' },
-    ],
-  },
-  {
-    category: 'コンテンツ発信',
-    items: [
-      { id: 'c1', title: '発信テーマ・軸を決める',        desc: '何について専門的に発信するかを明確にする' },
-      { id: 'c2', title: 'コンテンツカレンダーを作る',    desc: '週の投稿頻度と内容を計画する' },
-      { id: 'c3', title: '最初のコンテンツを公開する',    desc: 'Note 記事または X 投稿を 1 本公開する' },
-      { id: 'c4', title: 'ニッチな専門分野を確立する',    desc: '特定領域でのオーソリティを高める' },
-    ],
-  },
-  {
-    category: 'ネットワーキング',
-    items: [
-      { id: 'n1', title: 'コミュニティに参加する',           desc: 'Slack・Discord・勉強会などに積極参加' },
-      { id: 'n2', title: '週 3 人以上と交流する',            desc: 'DM・コメント・リプライで繋がりを広げる' },
-      { id: 'n3', title: '登壇・発表の機会を作る',           desc: 'LT 会や勉強会で知名度を上げる' },
-      { id: 'n4', title: 'デジタル名刺を作成・更新する',     desc: 'Eight などのサービスも設定する' },
-    ],
-  },
-];
-
-function initChecklist() {
-  const container = document.getElementById('checklistContainer');
-  container.innerHTML = CHECKLIST.map(cat => `
-    <div class="checklist-category">
-      <div class="checklist-category-title">${cat.category}</div>
-      ${cat.items.map(item => `
-        <div class="checklist-item ${state.checklist[item.id] ? 'done' : ''}" data-id="${item.id}">
-          <div class="check-box">${state.checklist[item.id] ? '✓' : ''}</div>
-          <div class="check-text">
-            <div class="check-title">${item.title}</div>
-            <div class="check-desc">${item.desc}</div>
-          </div>
-        </div>
-      `).join('')}
-    </div>
-  `).join('');
-
-  container.querySelectorAll('.checklist-item').forEach(el => {
-    el.addEventListener('click', () => {
-      const id = el.dataset.id;
-      state.checklist[id] = !state.checklist[id];
-      el.classList.toggle('done', state.checklist[id]);
-      el.querySelector('.check-box').textContent = state.checklist[id] ? '✓' : '';
-      saveState();
-      updateChecklistProgress();
+function initRecTabs() {
+  document.querySelectorAll('.rec-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.rec-tab').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.rec-grid').forEach(g => g.classList.add('hidden'));
+      btn.classList.add('active');
+      document.getElementById(`rec-${btn.dataset.rec}`).classList.remove('hidden');
     });
   });
-
-  updateChecklistProgress();
 }
 
-function updateChecklistProgress() {
-  const total     = CHECKLIST.reduce((n, c) => n + c.items.length, 0);
-  const completed = Object.values(state.checklist).filter(Boolean).length;
-  const pct       = total ? Math.round((completed / total) * 100) : 0;
-  document.getElementById('checklistFill').style.width = `${pct}%`;
-  document.getElementById('checklistPercent').textContent = `${completed} / ${total} 完了`;
+// ── Plan ──────────────────────────────────────────────────────────────────────
+
+function renderPlan() {
+  const { analysis } = state;
+  const isEmpty = !analysis;
+  document.getElementById('planEmpty').hidden   = !isEmpty;
+  document.getElementById('planContent').hidden =  isEmpty;
+  if (isEmpty) return;
+
+  const plan = analysis.action_plan || {};
+  renderTasks('planWeekSection',  '今週のアクション',  plan.this_week  || [], 'week');
+  renderTasks('planMonthSection', '今月のアクション',  plan.this_month || [], 'month');
+  renderMilestones(plan.milestones || []);
 }
 
-// ─── Overall progress ─────────────────────────────────────────────────────────
+function renderTasks(containerId, title, tasks, prefix) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = `
+    <div class="plan-section">
+      <h3 class="plan-title">${title}</h3>
+      ${tasks.map((t, i) => {
+        const id   = `${prefix}_${i}`;
+        const done = !!state.checklist[id];
+        const icon = CAT_ICONS[t.category] || '✓';
+        return `
+          <div class="plan-item ${done ? 'done' : ''}" data-id="${id}">
+            <div class="plan-check">${done ? '✓' : ''}</div>
+            <span class="plan-cat">${icon}</span>
+            <span class="plan-text">${esc(t.task)}</span>
+          </div>`;
+      }).join('')}
+    </div>`;
 
-function updateProgress() {
-  const checks = [
-    state.profile.name,
-    state.profile.title,
-    state.profile.tagline,
-    state.profile.bio,
-    state.identity.strength,
-    state.identity.targetAudience,
-    state.identity.uniqueValue,
-    state.identity.mission,
-    state.identity.values.length > 0,
-    state.skills.length >= 3,
-    state.statement,
-    (() => {
-      const total = CHECKLIST.reduce((n,c) => n + c.items.length, 0);
-      return Object.values(state.checklist).filter(Boolean).length >= total * 0.5;
-    })(),
-  ];
-
-  const filled = checks.filter(Boolean).length;
-  const pct = Math.round((filled / checks.length) * 100);
-  document.getElementById('progressFill').style.width  = `${pct}%`;
-  document.getElementById('progressPercent').textContent = `${pct}%`;
+  el.querySelectorAll('.plan-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const id = item.dataset.id;
+      state.checklist[id] = !state.checklist[id];
+      item.classList.toggle('done', state.checklist[id]);
+      item.querySelector('.plan-check').textContent = state.checklist[id] ? '✓' : '';
+      saveState();
+    });
+  });
 }
 
-// ─── Boot ────────────────────────────────────────────────────────────────────
+function renderMilestones(milestones) {
+  document.getElementById('planMilestones').innerHTML = `
+    <div class="plan-section">
+      <h3 class="plan-title">マイルストーン</h3>
+      <div class="milestones">
+        ${milestones.map((m, i) => `
+          <div class="milestone">
+            <div class="milestone-line">
+              <div class="milestone-dot ${i === milestones.length - 1 ? 'last' : ''}"></div>
+              <div class="milestone-vline"></div>
+            </div>
+            <div class="milestone-content">
+              <div class="milestone-period">${esc(m.period)}</div>
+              <div class="milestone-goal">${esc(m.goal)}</div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+function initSettings() {
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    document.getElementById('apiKeyEdit').value  = state.apiKey;
+    document.getElementById('modelSelect').value = state.model;
+    document.getElementById('settingsModal').classList.remove('hidden');
+  });
+
+  document.getElementById('closeSettingsBtn').addEventListener('click', closeSettings);
+  document.getElementById('settingsModal').addEventListener('click', e => {
+    if (e.target.id === 'settingsModal') closeSettings();
+  });
+
+  document.getElementById('saveSettingsBtn').addEventListener('click', () => {
+    const key   = document.getElementById('apiKeyEdit').value.trim();
+    const model = document.getElementById('modelSelect').value;
+    if (key && !key.startsWith('sk-ant-')) {
+      showToast('有効なAPIキーを入力してください', 'error');
+      return;
+    }
+    if (key) state.apiKey = key;
+    state.model = model;
+    saveState();
+    closeSettings();
+    showToast('設定を保存しました');
+  });
+
+  document.getElementById('clearDataBtn').addEventListener('click', () => {
+    if (!confirm('すべてのデータを削除してリセットします。よろしいですか？')) return;
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
+  });
+}
+
+function closeSettings() {
+  document.getElementById('settingsModal').classList.add('hidden');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', () => {
   loadState();
+  initSetup();
   initTabs();
   initForms();
-  initValues();
-  initSkills();
-  initStatement();
-  initSns();
-  initChecklist();
-  updateProgress();
+  initRecTabs();
+  initSettings();
+
+  document.getElementById('analyzeBtn').addEventListener('click', runAnalysis);
+  document.getElementById('refreshBtn').addEventListener('click', runAnalysis);
+
+  if (state.apiKey) {
+    showApp();
+    if (state.analysis) {
+      renderHub();
+      renderPlan();
+    }
+  }
 });
