@@ -236,6 +236,7 @@ body {
 .badge-current { background: var(--primary-light); color: var(--primary); }
 .badge-target  { background: var(--accent-light);  color: var(--accent); }
 .badge-lacks        { background: #FEF3C7; color: #D97706; }
+.badge-source       { background: #ECFDF5; color: #059669; }
 .badge-integration  { background: #F1F0EF; color: #37352F; }
 
 .section-desc { color: var(--text-2); font-size: 13px; }
@@ -958,6 +959,109 @@ input:focus, textarea:focus, select:focus {
 }
 .daily-message-icon { font-size: 18px; flex-shrink: 0; line-height: 1.4; }
 .daily-message-text { font-size: 13px; color: var(--text); font-weight: 500; line-height: 1.6; }
+
+/* ── Source Manager ── */
+.source-list { margin-bottom: 14px; display: flex; flex-direction: column; gap: 8px; }
+.source-empty-msg { font-size: 13px; color: var(--text-2); padding: 4px 0 10px; margin: 0; }
+.source-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+}
+.source-item-info { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.source-item-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.source-item-url {
+  font-size: 11px;
+  color: var(--primary);
+  text-decoration: none;
+  background: var(--primary-light);
+  padding: 2px 7px;
+  border-radius: 4px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-item-url:hover { text-decoration: underline; }
+.source-item-desc { font-size: 11px; color: var(--text-2); }
+.btn-source-del {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  color: var(--text-2);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.btn-source-del:hover { border-color: var(--danger); color: var(--danger); background: #FEF2F2; }
+.source-add-form { display: flex; flex-direction: column; gap: 8px; }
+.source-input {
+  width: 100%;
+  padding: 8px 11px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text);
+  background: #fff;
+  transition: border-color .15s;
+}
+.source-input:focus { outline: none; border-color: var(--primary); }
+.btn-source-add {
+  align-self: flex-start;
+  padding: 7px 16px;
+  background: #059669;
+  color: #fff;
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.btn-source-add:hover { opacity: .88; }
+
+/* 登録ソースの行（今日の提案内） */
+.daily-sources-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #ECFDF5;
+  border: 1px solid #A7F3D0;
+  border-radius: var(--r-sm);
+  flex-wrap: wrap;
+}
+.daily-sources-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #059669;
+  white-space: nowrap;
+  padding-top: 3px;
+}
+.daily-source-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; }
+.daily-source-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  background: #fff;
+  border: 1px solid #A7F3D0;
+  color: #059669;
+  text-decoration: none;
+  transition: background .15s, border-color .15s;
+}
+a.daily-source-chip:hover { background: #D1FAE5; border-color: #059669; }
+.daily-source-chip.no-link { color: var(--text-2); border-color: var(--border); }
 
 /* ── Suggestion Tabs (multiple daily suggestions) ── */
 .suggestion-tabs {
