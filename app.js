@@ -460,6 +460,9 @@ async function generateSnsProfiles() {
 
 // ─── Daily input generation ───────────────────────────────────────────────────
 async function generateDailyInput() {
+  if (state.dailyContent) {
+    if (!confirm('今日の提案はすでに生成されています。\n再生成すると進捗とメモが初期化されます。よろしいですか？')) return;
+  }
   const btn = document.getElementById('genDailyBtn');
   setButtonLoading(btn, true);
   try {
@@ -624,44 +627,73 @@ function renderCalendar(year, month, logs) {
 
   grid.querySelectorAll('.cal-cell[data-date]').forEach(cell => {
     const log = logMap.get(cell.dataset.date);
-    if (!log) return;
+    if (!log?.content || !Object.keys(log.content).length) return;
     cell.style.cursor = 'pointer';
-    cell.addEventListener('click', () => renderLogDetail(log, cell.dataset.date));
+    cell.addEventListener('click', () => {
+      renderLogDetail(log, cell.dataset.date);
+      document.getElementById('dailyContent')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   });
 }
 
 function renderLogDetail(log, dateStr) {
-  const el = document.getElementById('logDetail');
+  const el = document.getElementById('dailyContent');
   if (!el) return;
+
   const content   = log.content || {};
   const completed = new Set((log.completed_actions || []).filter(k => k.startsWith('learning_') || k.startsWith('action_')));
   const learning  = Array.isArray(content.learning) ? content.learning : [];
   const action    = Array.isArray(content.action)   ? content.action   : [];
+  const total     = learning.length + action.length;
+  const done      = completed.size;
 
-  const itemsHtml = (items, prefix) => items.map((text, i) => {
-    const done = completed.has(`${prefix}_${i}`);
-    return `<li class="${done ? 'log-done' : ''}"><span class="log-check-icon">${done ? '✓' : '○'}</span>${escHtml(text)}</li>`;
+  const d         = new Date(dateStr + 'T00:00:00');
+  const dateLabel = d.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+
+  const itemHtml = (items, prefix) => items.map((text, i) => {
+    const key    = `${prefix}_${i}`;
+    const isDone = completed.has(key);
+    const gUrl   = PLATFORMS.google.url(text);
+    const ytUrl  = prefix === 'learning' ? PLATFORMS.youtube.url(text) : null;
+    return `<li class="daily-task-item${isDone ? ' done' : ''}">
+      <span class="past-check">${isDone ? '✓' : '○'}</span>
+      <div class="daily-task-body">
+        <div class="daily-task-row"><span class="daily-task-text">${escHtml(text)}</span></div>
+        <div class="daily-task-links">
+          <a class="daily-task-link" href="${gUrl}" target="_blank" rel="noopener noreferrer"><span class="task-link-dot" style="background:#4285F4"></span>Google</a>
+          ${ytUrl ? `<a class="daily-task-link" href="${ytUrl}" target="_blank" rel="noopener noreferrer"><span class="task-link-dot" style="background:#FF0000"></span>YouTube</a>` : ''}
+        </div>
+      </div>
+    </li>`;
   }).join('');
 
-  const d = new Date(dateStr + 'T00:00:00');
-  const dateLabel = d.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
-  const total = learning.length + action.length;
-  const done  = completed.size;
+  // セクション見出しを日付表示に切り替え
+  const titleEl = document.getElementById('dailySectionTitle');
+  if (titleEl) titleEl.textContent = dateLabel + 'の提案';
 
-  el.hidden = false;
   el.innerHTML = `
-    <div class="log-detail-inner">
-      <div class="log-detail-head">
-        <div>
-          <p class="log-detail-date">${dateLabel}</p>
-          ${content.theme ? `<span class="log-detail-theme">${escHtml(content.theme)}</span>` : ''}
-        </div>
-        <span class="log-detail-score">${done}/${total} 完了</span>
-      </div>
-      ${learning.length ? `<div class="log-detail-block"><h4>📚 インプット</h4><ul>${itemsHtml(learning, 'learning')}</ul></div>` : ''}
-      ${action.length   ? `<div class="log-detail-block"><h4>⚡ アクション</h4><ul>${itemsHtml(action, 'action')}</ul></div>` : ''}
-      ${content.message ? `<p class="log-detail-msg">💬 ${escHtml(content.message)}</p>` : ''}
-    </div>`;
+    <div class="past-day-bar">
+      <button class="btn-back-today" id="backTodayBtn">← 今日に戻る</button>
+      <span class="past-day-score">${done} / ${total} 完了</span>
+    </div>
+    ${content.theme ? `<div class="daily-theme"><span class="daily-theme-label">テーマ</span><p class="daily-theme-text">${escHtml(content.theme)}</p></div>` : ''}
+    <div class="daily-progress-bar"><div class="daily-progress-fill" style="width:${total ? Math.round(done / total * 100) : 0}%"></div></div>
+    <p class="daily-progress-label">${done} / ${total} 完了</p>
+    <div class="daily-grid">
+      <div class="daily-block"><h4 class="daily-block-title">📚 インプット</h4><ul class="daily-list">${itemHtml(learning, 'learning')}</ul></div>
+      <div class="daily-block"><h4 class="daily-block-title">⚡ アクション</h4><ul class="daily-list">${itemHtml(action, 'action')}</ul></div>
+    </div>
+    ${content.message ? `<div class="daily-message"><span class="daily-message-icon">💬</span><p class="daily-message-text">${escHtml(content.message)}</p></div>` : ''}`;
+
+  document.getElementById('backTodayBtn')?.addEventListener('click', () => {
+    const titleEl = document.getElementById('dailySectionTitle');
+    if (titleEl) titleEl.textContent = '今日のインプット';
+    if (state.dailyContent) {
+      renderDailyInput(state.dailyContent);
+    } else {
+      el.innerHTML = '<p class="daily-placeholder">ボタンを押すと、今日のフォーカス・学習・アクションが生成されます</p>';
+    }
+  });
 }
 
 function renderDailyItem(text, key, extraLinks = []) {

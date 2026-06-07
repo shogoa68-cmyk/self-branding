@@ -840,6 +840,40 @@ input:focus, textarea:focus, select:focus {
 }
 .note-textarea:focus { outline: none; border-color: var(--primary); background: #fff; }
 
+/* Past day view */
+.past-day-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.btn-back-today {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-light);
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.btn-back-today:hover { opacity: .8; }
+.past-day-score { font-size: 12px; color: var(--text-light); }
+.past-check {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.daily-task-item.done .past-check { color: var(--primary); }
+
 /* Notion save row */
 .notion-save-row {
   display: flex;
