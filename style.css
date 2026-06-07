@@ -58,6 +58,120 @@ body {
   letter-spacing: .3px;
 }
 
+/* ── User Info (header right) ── */
+.user-info {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.user-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255,255,255,.4);
+}
+
+.user-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: .9;
+}
+
+.btn-signout {
+  background: rgba(255,255,255,.15);
+  border: 1px solid rgba(255,255,255,.3);
+  border-radius: var(--r-xs);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #fff;
+  transition: background .15s;
+}
+.btn-signout:hover { background: rgba(255,255,255,.25); }
+
+/* ── Login Screen ── */
+.login-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #4338CA 0%, #7C3AED 100%);
+  z-index: 200;
+  padding: 20px;
+}
+
+.login-card {
+  background: var(--card);
+  border-radius: 20px;
+  padding: 48px 40px;
+  max-width: 400px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,.2);
+}
+
+.login-logo {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--primary);
+  margin-bottom: 6px;
+}
+
+.login-tagline {
+  font-size: 12px;
+  color: var(--text-2);
+  letter-spacing: .5px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+
+.login-heading {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.4;
+  margin-bottom: 12px;
+}
+
+.login-desc {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.7;
+  margin-bottom: 32px;
+}
+
+.btn-google-login {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 20px;
+  background: #fff;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  transition: box-shadow .15s, border-color .15s;
+  box-shadow: var(--shadow);
+}
+.btn-google-login:hover {
+  border-color: #c5c5c5;
+  box-shadow: var(--shadow-md);
+}
+
 /* ── Tab Nav ── */
 .tab-nav {
   background: var(--card);

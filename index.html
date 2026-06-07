@@ -5,243 +5,268 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BrandMe – セルフブランディング支援</title>
   <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
-  <header class="app-header">
-    <div class="header-inner">
-      <div class="logo"><span class="logo-star">✦</span> BrandMe</div>
-      <div class="header-tagline">セルフブランディング支援ツール</div>
-    </div>
-  </header>
-
-  <nav class="tab-nav">
-    <button class="tab-btn active" data-tab="profile">
-      <span>👤</span><span class="tab-label">プロフィール</span>
-    </button>
-    <button class="tab-btn" data-tab="hub">
-      <span>🔍</span><span class="tab-label">コンテンツ探索</span>
-    </button>
-    <button class="tab-btn" data-tab="brand">
-      <span>✍️</span><span class="tab-label">ブランド設計</span>
-    </button>
-    <button class="tab-btn" data-tab="plan">
-      <span>📅</span><span class="tab-label">行動計画</span>
-    </button>
-  </nav>
-
-  <main class="main-content">
-
-    <!-- ── プロフィールタブ ── -->
-    <section class="tab-content active" id="tab-profile">
-
-      <div class="section-header">
-        <span class="section-badge badge-current">現在の自分</span>
-        <p class="section-desc">あなたの現状を詳しく教えてください。具体的なほど精度が上がります。</p>
-      </div>
-      <div class="card">
-        <div class="form-row">
-          <div class="form-group">
-            <label>年齢</label>
-            <input type="text" data-section="profile" data-field="age" placeholder="例: 28歳">
-          </div>
-          <div class="form-group">
-            <label>性別</label>
-            <select data-section="profile" data-field="gender">
-              <option value="">選択</option>
-              <option>男性</option><option>女性</option>
-              <option>その他</option><option>回答しない</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>現在の職業・役職</label>
-          <input type="text" data-section="profile" data-field="profession"
-            placeholder="例: スタートアップのソフトウェアエンジニア（5年目）">
-        </div>
-        <div class="form-group">
-          <label>これまでの経歴・経験</label>
-          <textarea data-section="profile" data-field="career" rows="3"
-            placeholder="例: 新卒でSIer入社 → 3年後スタートアップに転職。Webアプリ開発・チームリード経験あり。"></textarea>
-        </div>
-        <div class="form-group">
-          <label>得意なこと・スキル <span class="label-hint">（カンマ区切りで複数可）</span></label>
-          <textarea data-section="profile" data-field="skills" rows="2"
-            placeholder="例: TypeScript, React, Node.js, チームリード, 英語"></textarea>
-        </div>
-        <div class="form-group">
-          <label>趣味・興味関心</label>
-          <textarea data-section="profile" data-field="hobbies" rows="2"
-            placeholder="例: ビジネス書・SF読書、登山、テック系ポッドキャスト"></textarea>
-        </div>
-      </div>
-
-      <div class="section-header">
-        <span class="section-badge badge-target">目指す人物像</span>
-        <p class="section-desc">どんな自分になりたいですか？できるだけ具体的に書いてください。</p>
-      </div>
-      <div class="card">
-        <div class="form-group">
-          <label>目指す人物像・ロール</label>
-          <textarea data-section="target" data-field="targetRole" rows="3"
-            placeholder="例: スタートアップのCTOとして技術と事業の両方をリードし、テックメディアにも登場するエンジニア起業家"></textarea>
-        </div>
-        <div class="form-group">
-          <label>具体的に達成したいゴール</label>
-          <textarea data-section="target" data-field="targetGoals" rows="3"
-            placeholder="例: ・技術系カンファレンスで登壇&#10;・副業で月20万円の収入&#10;・GitHubスター1000以上のOSSを作る"></textarea>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>達成したい期間</label>
-            <select data-section="target" data-field="timeline">
-              <option value="">選択</option>
-              <option>3ヶ月</option><option>6ヶ月</option>
-              <option>1年</option><option>2〜3年</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>モチベーション・理由</label>
-          <textarea data-section="target" data-field="motivation" rows="2"
-            placeholder="例: 会社に依存しない収入と影響力を持ち、自分のビジョンでプロダクトを作りたい"></textarea>
-        </div>
-      </div>
-
-      <button class="btn-generate-main" id="generateBtn">
-        🔍 コンテンツ・推薦クエリを生成する
+  <!-- ── ログイン画面 ── -->
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="login-logo"><span class="logo-star">✦</span> BrandMe</div>
+      <p class="login-tagline">あなたの成長ナビゲーター</p>
+      <h2 class="login-heading">セルフブランディングを、<br>毎日の習慣に。</h2>
+      <p class="login-desc">目指す人物像を設定して、<br>必要な情報と行動をナビゲートします。</p>
+      <button class="btn-google-login" id="googleLoginBtn">
+        <svg class="google-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+        </svg>
+        Googleでログイン
       </button>
+    </div>
+  </div>
 
-    </section>
+  <!-- ── アプリ本体（ログイン後に表示） ── -->
+  <div id="appMain" hidden>
 
-    <!-- ── コンテンツ探索タブ ── -->
-    <section class="tab-content" id="tab-hub">
-
-      <div id="hubEmpty" class="empty-state">
-        <div class="empty-icon">🔍</div>
-        <p class="empty-title">プロフィールを入力してください</p>
-        <p class="empty-desc">「プロフィール」タブで現在の自分と目標を入力し、<br>「コンテンツ・推薦クエリを生成する」を押してください</p>
-        <button class="btn-primary" data-goto="profile">プロフィールへ →</button>
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="logo"><span class="logo-star">✦</span> BrandMe</div>
+        <div id="userInfo" class="user-info"></div>
       </div>
+    </header>
 
-      <div id="hubContent" hidden>
-        <div class="keyword-bar" id="keywordBar"></div>
+    <nav class="tab-nav">
+      <button class="tab-btn active" data-tab="profile">
+        <span>👤</span><span class="tab-label">プロフィール</span>
+      </button>
+      <button class="tab-btn" data-tab="hub">
+        <span>🔍</span><span class="tab-label">コンテンツ探索</span>
+      </button>
+      <button class="tab-btn" data-tab="brand">
+        <span>✍️</span><span class="tab-label">ブランド設計</span>
+      </button>
+      <button class="tab-btn" data-tab="plan">
+        <span>📅</span><span class="tab-label">行動計画</span>
+      </button>
+    </nav>
 
-        <div class="rec-tabs">
-          <button class="rec-tab active" data-rec="articles">📰 記事・ブログ</button>
-          <button class="rec-tab" data-rec="people">👤 フォロー人物</button>
-          <button class="rec-tab" data-rec="videos">🎥 YouTube</button>
-          <button class="rec-tab" data-rec="courses">📚 コース・書籍</button>
+    <main class="main-content">
+
+      <!-- ── プロフィールタブ ── -->
+      <section class="tab-content active" id="tab-profile">
+
+        <div class="section-header">
+          <span class="section-badge badge-current">現在の自分</span>
+          <p class="section-desc">あなたの現状を詳しく教えてください。具体的なほど精度が上がります。</p>
         </div>
-        <div id="rec-articles" class="rec-grid"></div>
-        <div id="rec-people"   class="rec-grid hidden"></div>
-        <div id="rec-videos"   class="rec-grid hidden"></div>
-        <div id="rec-courses"  class="rec-grid hidden"></div>
-
-        <div class="hub-actions">
-          <button class="btn-outline" id="regenBtn">🔄 クエリを再生成する</button>
+        <div class="card">
+          <div class="form-row">
+            <div class="form-group">
+              <label>年齢</label>
+              <input type="text" data-section="profile" data-field="age" placeholder="例: 28歳">
+            </div>
+            <div class="form-group">
+              <label>性別</label>
+              <select data-section="profile" data-field="gender">
+                <option value="">選択</option>
+                <option>男性</option><option>女性</option>
+                <option>その他</option><option>回答しない</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>現在の職業・役職</label>
+            <input type="text" data-section="profile" data-field="profession"
+              placeholder="例: スタートアップのソフトウェアエンジニア（5年目）">
+          </div>
+          <div class="form-group">
+            <label>これまでの経歴・経験</label>
+            <textarea data-section="profile" data-field="career" rows="3"
+              placeholder="例: 新卒でSIer入社 → 3年後スタートアップに転職。Webアプリ開発・チームリード経験あり。"></textarea>
+          </div>
+          <div class="form-group">
+            <label>得意なこと・スキル <span class="label-hint">（カンマ区切りで複数可）</span></label>
+            <textarea data-section="profile" data-field="skills" rows="2"
+              placeholder="例: TypeScript, React, Node.js, チームリード, 英語"></textarea>
+          </div>
+          <div class="form-group">
+            <label>趣味・興味関心</label>
+            <textarea data-section="profile" data-field="hobbies" rows="2"
+              placeholder="例: ビジネス書・SF読書、登山、テック系ポッドキャスト"></textarea>
+          </div>
         </div>
-      </div>
 
-    </section>
-
-    <!-- ── ブランド設計タブ ── -->
-    <section class="tab-content" id="tab-brand">
-
-      <div class="section-header">
-        <h2>ブランドステートメント</h2>
-        <p class="section-desc">プロフィール情報から自動生成します。編集してご自身の言葉に整えてください。</p>
-      </div>
-      <div class="card">
-        <button class="btn-sub-generate" id="genStatementBtn">✦ ステートメントを生成する</button>
-        <div class="gen-block" id="statementBlock">
-          <p class="gen-placeholder">上のボタンを押すと生成されます</p>
+        <div class="section-header">
+          <span class="section-badge badge-target">目指す人物像</span>
+          <p class="section-desc">どんな自分になりたいですか？できるだけ具体的に書いてください。</p>
         </div>
-      </div>
-
-      <div class="section-header">
-        <h2>エレベーターピッチ <span class="sub-heading">（30秒バージョン）</span></h2>
-      </div>
-      <div class="card">
-        <div class="gen-block" id="pitchBlock">
-          <p class="gen-placeholder">ステートメントを生成するとピッチも作成されます</p>
+        <div class="card">
+          <div class="form-group">
+            <label>目指す人物像・ロール</label>
+            <textarea data-section="target" data-field="targetRole" rows="3"
+              placeholder="例: スタートアップのCTOとして技術と事業の両方をリードし、テックメディアにも登場するエンジニア起業家"></textarea>
+          </div>
+          <div class="form-group">
+            <label>具体的に達成したいゴール</label>
+            <textarea data-section="target" data-field="targetGoals" rows="3"
+              placeholder="例: ・技術系カンファレンスで登壇&#10;・副業で月20万円の収入&#10;・GitHubスター1000以上のOSSを作る"></textarea>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>達成したい期間</label>
+              <select data-section="target" data-field="timeline">
+                <option value="">選択</option>
+                <option>3ヶ月</option><option>6ヶ月</option>
+                <option>1年</option><option>2〜3年</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>モチベーション・理由</label>
+            <textarea data-section="target" data-field="motivation" rows="2"
+              placeholder="例: 会社に依存しない収入と影響力を持ち、自分のビジョンでプロダクトを作りたい"></textarea>
+          </div>
         </div>
-      </div>
 
-      <div class="section-header">
-        <h2>SNS プロフィール文</h2>
-        <p class="section-desc">各プラットフォームに最適化された文章を生成します。コピーしてすぐに使えます。</p>
-      </div>
+        <button class="btn-generate-main" id="generateBtn">
+          🔍 コンテンツ・推薦クエリを生成する
+        </button>
 
-      <div class="card sns-gen-card">
-        <div class="sns-card-head">
-          <span class="sns-dot" style="background:#000">X</span>
-          <div><strong>X (Twitter)</strong> <span class="char-limit">最大160文字</span></div>
+      </section>
+
+      <!-- ── コンテンツ探索タブ ── -->
+      <section class="tab-content" id="tab-hub">
+
+        <div id="hubEmpty" class="empty-state">
+          <div class="empty-icon">🔍</div>
+          <p class="empty-title">プロフィールを入力してください</p>
+          <p class="empty-desc">「プロフィール」タブで現在の自分と目標を入力し、<br>「コンテンツ・推薦クエリを生成する」を押してください</p>
+          <button class="btn-primary" data-goto="profile">プロフィールへ →</button>
         </div>
-        <textarea class="sns-textarea" id="xText" rows="3" placeholder="生成ボタンを押してください..."></textarea>
-        <div class="sns-card-foot">
-          <span class="char-counter" id="xCount">0 / 160文字</span>
-          <button class="btn-copy" data-target="xText">📋 コピー</button>
+
+        <div id="hubContent" hidden>
+          <div class="keyword-bar" id="keywordBar"></div>
+
+          <div class="rec-tabs">
+            <button class="rec-tab active" data-rec="articles">📰 記事・ブログ</button>
+            <button class="rec-tab" data-rec="people">👤 フォロー人物</button>
+            <button class="rec-tab" data-rec="videos">🎥 YouTube</button>
+            <button class="rec-tab" data-rec="courses">📚 コース・書籍</button>
+          </div>
+          <div id="rec-articles" class="rec-grid"></div>
+          <div id="rec-people"   class="rec-grid hidden"></div>
+          <div id="rec-videos"   class="rec-grid hidden"></div>
+          <div id="rec-courses"  class="rec-grid hidden"></div>
+
+          <div class="hub-actions">
+            <button class="btn-outline" id="regenBtn">🔄 クエリを再生成する</button>
+          </div>
         </div>
-      </div>
 
-      <div class="card sns-gen-card">
-        <div class="sns-card-head">
-          <span class="sns-dot" style="background:#0A66C2">in</span>
-          <div><strong>LinkedIn</strong> <span class="char-limit">ヘッドライン 最大220文字</span></div>
+      </section>
+
+      <!-- ── ブランド設計タブ ── -->
+      <section class="tab-content" id="tab-brand">
+
+        <div class="section-header">
+          <h2>ブランドステートメント</h2>
+          <p class="section-desc">プロフィール情報から自動生成します。編集してご自身の言葉に整えてください。</p>
         </div>
-        <textarea class="sns-textarea" id="linkedinText" rows="3" placeholder="生成ボタンを押してください..."></textarea>
-        <div class="sns-card-foot">
-          <span class="char-counter" id="linkedinCount">0 / 220文字</span>
-          <button class="btn-copy" data-target="linkedinText">📋 コピー</button>
+        <div class="card">
+          <button class="btn-sub-generate" id="genStatementBtn">✦ ステートメントを生成する</button>
+          <div class="gen-block" id="statementBlock">
+            <p class="gen-placeholder">上のボタンを押すと生成されます</p>
+          </div>
         </div>
-      </div>
 
-      <div class="card sns-gen-card">
-        <div class="sns-card-head">
-          <span class="sns-dot" style="background:#24292F">GH</span>
-          <div><strong>GitHub</strong> <span class="char-limit">最大160文字</span></div>
+        <div class="section-header">
+          <h2>エレベーターピッチ <span class="sub-heading">（30秒バージョン）</span></h2>
         </div>
-        <textarea class="sns-textarea" id="githubText" rows="2" placeholder="生成ボタンを押してください..."></textarea>
-        <div class="sns-card-foot">
-          <span class="char-counter" id="githubCount">0 / 160文字</span>
-          <button class="btn-copy" data-target="githubText">📋 コピー</button>
+        <div class="card">
+          <div class="gen-block" id="pitchBlock">
+            <p class="gen-placeholder">ステートメントを生成するとピッチも作成されます</p>
+          </div>
         </div>
-      </div>
 
-      <div class="card sns-gen-card">
-        <div class="sns-card-head">
-          <span class="sns-dot" style="background:#21BDDB">W</span>
-          <div><strong>Wantedly</strong> <span class="char-limit">自己紹介 最大500文字</span></div>
+        <div class="section-header">
+          <h2>SNS プロフィール文</h2>
+          <p class="section-desc">各プラットフォームに最適化された文章を生成します。コピーしてすぐに使えます。</p>
         </div>
-        <textarea class="sns-textarea" id="wantedlyText" rows="6" placeholder="生成ボタンを押してください..."></textarea>
-        <div class="sns-card-foot">
-          <span class="char-counter" id="wantedlyCount">0 / 500文字</span>
-          <button class="btn-copy" data-target="wantedlyText">📋 コピー</button>
+
+        <div class="card sns-gen-card">
+          <div class="sns-card-head">
+            <span class="sns-dot" style="background:#000">X</span>
+            <div><strong>X (Twitter)</strong> <span class="char-limit">最大160文字</span></div>
+          </div>
+          <textarea class="sns-textarea" id="xText" rows="3" placeholder="生成ボタンを押してください..."></textarea>
+          <div class="sns-card-foot">
+            <span class="char-counter" id="xCount">0 / 160文字</span>
+            <button class="btn-copy" data-target="xText">📋 コピー</button>
+          </div>
         </div>
-      </div>
 
-      <button class="btn-generate-main" id="genSnsBtn">✦ SNSプロフィールを一括生成する</button>
-
-    </section>
-
-    <!-- ── 行動計画タブ ── -->
-    <section class="tab-content" id="tab-plan">
-
-      <div class="checklist-progress-card">
-        <div class="cl-bar-wrap">
-          <div class="cl-bar"><div class="cl-bar-fill" id="clFill"></div></div>
+        <div class="card sns-gen-card">
+          <div class="sns-card-head">
+            <span class="sns-dot" style="background:#0A66C2">in</span>
+            <div><strong>LinkedIn</strong> <span class="char-limit">ヘッドライン 最大220文字</span></div>
+          </div>
+          <textarea class="sns-textarea" id="linkedinText" rows="3" placeholder="生成ボタンを押してください..."></textarea>
+          <div class="sns-card-foot">
+            <span class="char-counter" id="linkedinCount">0 / 220文字</span>
+            <button class="btn-copy" data-target="linkedinText">📋 コピー</button>
+          </div>
         </div>
-        <span class="cl-label" id="clLabel">0 / 0 完了</span>
-      </div>
 
-      <div id="checklistContainer"></div>
+        <div class="card sns-gen-card">
+          <div class="sns-card-head">
+            <span class="sns-dot" style="background:#24292F">GH</span>
+            <div><strong>GitHub</strong> <span class="char-limit">最大160文字</span></div>
+          </div>
+          <textarea class="sns-textarea" id="githubText" rows="2" placeholder="生成ボタンを押してください..."></textarea>
+          <div class="sns-card-foot">
+            <span class="char-counter" id="githubCount">0 / 160文字</span>
+            <button class="btn-copy" data-target="githubText">📋 コピー</button>
+          </div>
+        </div>
 
-    </section>
+        <div class="card sns-gen-card">
+          <div class="sns-card-head">
+            <span class="sns-dot" style="background:#21BDDB">W</span>
+            <div><strong>Wantedly</strong> <span class="char-limit">自己紹介 最大500文字</span></div>
+          </div>
+          <textarea class="sns-textarea" id="wantedlyText" rows="6" placeholder="生成ボタンを押してください..."></textarea>
+          <div class="sns-card-foot">
+            <span class="char-counter" id="wantedlyCount">0 / 500文字</span>
+            <button class="btn-copy" data-target="wantedlyText">📋 コピー</button>
+          </div>
+        </div>
 
-  </main>
+        <button class="btn-generate-main" id="genSnsBtn">✦ SNSプロフィールを一括生成する</button>
 
-  <div class="toast" id="toast"></div>
+      </section>
+
+      <!-- ── 行動計画タブ ── -->
+      <section class="tab-content" id="tab-plan">
+
+        <div class="checklist-progress-card">
+          <div class="cl-bar-wrap">
+            <div class="cl-bar"><div class="cl-bar-fill" id="clFill"></div></div>
+          </div>
+          <span class="cl-label" id="clLabel">0 / 0 完了</span>
+        </div>
+
+        <div id="checklistContainer"></div>
+
+      </section>
+
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+  </div><!-- /#appMain -->
 
   <script src="app.js"></script>
 </body>

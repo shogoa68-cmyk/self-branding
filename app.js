@@ -1,6 +1,13 @@
 'use strict';
 
-// ─── Platform definitions ───────────────────────────────────────────────────
+// ─── Supabase ─────────────────────────────────────────────────────────────────
+const SUPABASE_URL      = 'https://vfgzvbhusyxzmefugsdw.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmZ3p2Ymh1c3l4em1lZnVnc2R3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NzA1MTQsImV4cCI6MjA5NjM0NjUxNH0.85MvRWCTkZqRXzllDwOZKIs253_XlTIkT-7xgBukDeE';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentUser = null;
+
+// ─── Platform definitions ─────────────────────────────────────────────────────
 const PLATFORMS = {
   google:   { label: 'Google',   bg: '#4285F4', fg: '#fff', url: q => `https://www.google.com/search?q=${encodeURIComponent(q)}` },
   note:     { label: 'note',     bg: '#41C9B4', fg: '#fff', url: q => `https://note.com/search?q=${encodeURIComponent(q)}` },
@@ -11,24 +18,112 @@ const PLATFORMS = {
   amazon:   { label: 'Amazon',   bg: '#FF9900', fg: '#fff', url: q => `https://www.amazon.co.jp/s?k=${encodeURIComponent(q)}` },
 };
 
-// ─── State ───────────────────────────────────────────────────────────────────
+// ─── State ────────────────────────────────────────────────────────────────────
 let state = {
-  profile: { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '' },
-  target:  { targetRole: '', targetGoals: '', timeline: '', motivation: '' },
-  queries: null,
+  profile:   { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '' },
+  target:    { targetRole: '', targetGoals: '', timeline: '', motivation: '' },
+  queries:   null,
   checklist: {},
 };
 
-// ─── Storage ─────────────────────────────────────────────────────────────────
-function saveState() {
-  try { localStorage.setItem('brandme_v3', JSON.stringify(state)); } catch {}
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+async function signInWithGoogle() {
+  const { error } = await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin + window.location.pathname },
+  });
+  if (error) showToast('ログインに失敗しました');
 }
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem('brandme_v3');
-    if (raw) state = { ...state, ...JSON.parse(raw) };
-  } catch {}
+async function signOut() {
+  await sb.auth.signOut();
+  currentUser = null;
+  showLoginScreen();
+}
+
+// ─── Supabase DB ──────────────────────────────────────────────────────────────
+async function loadProfile() {
+  if (!currentUser) return;
+  const { data } = await sb
+    .from('profiles')
+    .select('*')
+    .eq('id', currentUser.id)
+    .single();
+
+  if (!data) return;
+
+  state.profile = {
+    age:        data.age        || '',
+    gender:     data.gender     || '',
+    profession: data.profession || '',
+    career:     data.career     || '',
+    skills:     data.skills     || '',
+    hobbies:    data.hobbies    || '',
+  };
+  state.target = {
+    targetRole:  data.target_role  || '',
+    targetGoals: data.target_goals || '',
+    timeline:    data.timeline     || '',
+    motivation:  data.motivation   || '',
+  };
+  state.checklist = data.checklist || {};
+}
+
+let saveTimer;
+function scheduleProfileSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushProfileSave, 1200);
+}
+
+async function flushProfileSave() {
+  if (!currentUser) return;
+  const { error } = await sb.from('profiles').upsert({
+    id:           currentUser.id,
+    age:          state.profile.age,
+    gender:       state.profile.gender,
+    profession:   state.profile.profession,
+    career:       state.profile.career,
+    skills:       state.profile.skills,
+    hobbies:      state.profile.hobbies,
+    target_role:  state.target.targetRole,
+    target_goals: state.target.targetGoals,
+    timeline:     state.target.timeline,
+    motivation:   state.target.motivation,
+    checklist:    state.checklist,
+    updated_at:   new Date().toISOString(),
+  });
+  if (error) console.error('save error:', error);
+}
+
+// ─── Screen management ────────────────────────────────────────────────────────
+function showLoginScreen() {
+  document.getElementById('loginScreen').hidden = false;
+  document.getElementById('appMain').hidden      = true;
+}
+
+function showApp(user) {
+  document.getElementById('loginScreen').hidden = true;
+  document.getElementById('appMain').hidden      = false;
+
+  const name   = user.user_metadata?.full_name || user.email;
+  const avatar = user.user_metadata?.avatar_url;
+  const info   = document.getElementById('userInfo');
+  info.innerHTML = `
+    ${avatar ? `<img class="user-avatar" src="${escHtml(avatar)}" alt="">` : ''}
+    <span class="user-name">${escHtml(name)}</span>
+    <button class="btn-signout" id="signOutBtn">ログアウト</button>
+  `;
+  document.getElementById('signOutBtn').addEventListener('click', signOut);
+}
+
+async function onSignedIn(user) {
+  currentUser = user;
+  await loadProfile();
+  showApp(user);
+  initForms();
+  initChecklist();
+  bindCopyBtns();
+  renderHub();
 }
 
 // ─── Keyword / query extraction ───────────────────────────────────────────────
@@ -58,39 +153,36 @@ function buildQueries(profile, target) {
   const skills = tokenize(profile.skills).slice(0, 3).join(' ');
   const tRole  = extractRole(target.targetRole)  || 'リーダー';
 
-  const articles = [
-    `${role} セルフブランディング 方法`,
-    `${skills} キャリアアップ 戦略`,
-    `${tRole} なるには ロードマップ`,
-    `${role} SNS 発信 コンテンツ`,
-    `エンジニア 個人ブランド 事例`,
-  ];
-
-  const people = [
-    `${role} 著名人 影響力`,
-    `${tRole} ロールモデル`,
-    `${skills} エキスパート`,
-    `スタートアップ リーダー インフルエンサー`,
-    `テック 起業家 SNS`,
-  ];
-
-  const videos = [
-    `${role} セルフブランディング`,
-    `${skills} 学習 入門`,
-    `${tRole} インタビュー`,
-    `個人ブランド構築 方法`,
-    `キャリア転換 成功事例`,
-  ];
-
-  const courses = [
-    `${skills} 実践講座`,
-    `${role} スキルアップ`,
-    `${tRole} 必読書`,
-    `パーソナルブランディング 書籍`,
-    `${skills} 資格 取得`,
-  ];
-
-  return { articles, people, videos, courses };
+  return {
+    articles: [
+      `${role} セルフブランディング 方法`,
+      `${skills} キャリアアップ 戦略`,
+      `${tRole} なるには ロードマップ`,
+      `${role} SNS 発信 コンテンツ`,
+      `エンジニア 個人ブランド 事例`,
+    ],
+    people: [
+      `${role} 著名人 影響力`,
+      `${tRole} ロールモデル`,
+      `${skills} エキスパート`,
+      `スタートアップ リーダー インフルエンサー`,
+      `テック 起業家 SNS`,
+    ],
+    videos: [
+      `${role} セルフブランディング`,
+      `${skills} 学習 入門`,
+      `${tRole} インタビュー`,
+      `個人ブランド構築 方法`,
+      `キャリア転換 成功事例`,
+    ],
+    courses: [
+      `${skills} 実践講座`,
+      `${role} スキルアップ`,
+      `${tRole} 必読書`,
+      `パーソナルブランディング 書籍`,
+      `${skills} 資格 取得`,
+    ],
+  };
 }
 
 // ─── Render hub ───────────────────────────────────────────────────────────────
@@ -106,11 +198,9 @@ function renderHub() {
   document.getElementById('hubEmpty').hidden   = true;
   document.getElementById('hubContent').hidden = false;
 
-  // Keyword chips
   const bar = document.getElementById('keywordBar');
   bar.innerHTML = keywords.map(k => `<span class="kw-chip">${escHtml(k)}</span>`).join('');
 
-  // Category → platform mapping
   const categoryConfig = {
     articles: [
       { platform: 'google', desc: '記事・ブログを検索' },
@@ -162,11 +252,11 @@ function generateStatement() {
   const p = state.profile;
   const t = state.target;
 
-  const role   = p.profession || '専門家';
-  const skills = tokenize(p.skills).slice(0, 3).join('・') || 'スキル';
-  const tRole  = t.targetRole || '理想の姿';
-  const period = t.timeline   || '近い将来';
-  const why    = t.motivation || '自分のビジョンを実現するため';
+  const role      = p.profession || '専門家';
+  const skills    = tokenize(p.skills).slice(0, 3).join('・') || 'スキル';
+  const tRole     = t.targetRole || '理想の姿';
+  const period    = t.timeline   || '近い将来';
+  const why       = t.motivation || '自分のビジョンを実現するため';
 
   const statement = `${role}として${skills}を武器に、${period}で${tRole}へ。${why}。`;
   const pitch     = `はじめまして。私は${role}として${skills}の経験を持ちます。\n現在は${tRole}を目指し、日々スキルアップに取り組んでいます。\n${why}という想いで活動しています。`;
@@ -205,14 +295,12 @@ function generateSnsProfiles() {
     wantedly: `【${role}】\n\nスキル: ${skills}\n\n${p.career ? p.career.slice(0, 100) : ''}\n\n目標: ${tRole}を目指し、${why || 'スキルアップ'}に取り組んでいます。${p.hobbies ? `\n\n趣味: ${p.hobbies.slice(0, 80)}` : ''}`,
   };
 
-  const fields = [
+  [
     { id: 'xText',        key: 'x',        max: 160 },
     { id: 'linkedinText', key: 'linkedin',  max: 220 },
     { id: 'githubText',   key: 'github',    max: 160 },
     { id: 'wantedlyText', key: 'wantedly',  max: 500 },
-  ];
-
-  fields.forEach(({ id, key, max }) => {
+  ].forEach(({ id, key, max }) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.value = profiles[key].slice(0, max);
@@ -326,11 +414,10 @@ function initForms() {
     el.value = state[section][field] || '';
     el.addEventListener('input', () => {
       state[section][field] = el.value;
-      saveState();
+      scheduleProfileSave();
     });
   });
 
-  // SNS char counters on manual edit
   [
     { id: 'xText',        max: 160 },
     { id: 'linkedinText', max: 220 },
@@ -384,55 +471,46 @@ function escAttr(s) {
     .replace(/"/g, '&quot;');
 }
 
-// ─── Bootstrap ───────────────────────────────────────────────────────────────
-function init() {
-  loadState();
-  initForms();
-  initChecklist();
-  bindCopyBtns();
+// ─── Bootstrap ────────────────────────────────────────────────────────────────
+async function init() {
+  // Login button
+  document.getElementById('googleLoginBtn').addEventListener('click', signInWithGoogle);
 
-  // Tab navigation
+  // Tab navigation (attached before auth so they're always ready)
   document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
-
-  // Empty-state "go to profile" buttons
   document.querySelectorAll('[data-goto]').forEach(btn => {
     btn.addEventListener('click', () => switchTab(btn.dataset.goto));
   });
 
-  // Generate content queries → jump to hub tab
+  // Generate queries → hub tab
   document.getElementById('generateBtn').addEventListener('click', () => {
     state.queries = buildQueries(state.profile, state.target);
-    saveState();
     switchTab('hub');
     showToast('クエリを生成しました');
   });
 
-  // Re-generate queries (inside hub tab)
-  const regenBtn = document.getElementById('regenBtn');
-  if (regenBtn) {
-    regenBtn.addEventListener('click', () => {
-      state.queries = buildQueries(state.profile, state.target);
-      saveState();
-      renderHub();
-      showToast('クエリを再生成しました');
-    });
-  }
+  // Re-generate inside hub tab
+  document.getElementById('regenBtn').addEventListener('click', () => {
+    state.queries = buildQueries(state.profile, state.target);
+    renderHub();
+    showToast('クエリを再生成しました');
+  });
 
-  // Generate brand statement + pitch
+  // Brand statement + pitch
   document.getElementById('genStatementBtn').addEventListener('click', () => {
     generateStatement();
     showToast('ブランドステートメントを生成しました');
   });
 
-  // Generate SNS profiles
+  // SNS profiles
   document.getElementById('genSnsBtn').addEventListener('click', () => {
     generateSnsProfiles();
     showToast('SNSプロフィールを生成しました');
   });
 
-  // Rec sub-tabs (articles / people / videos / courses)
+  // Rec sub-tabs
   document.querySelectorAll('.rec-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.rec-tab').forEach(b => b.classList.remove('active'));
@@ -450,12 +528,26 @@ function init() {
     if (!btn) return;
     const key = btn.dataset.key;
     state.checklist[key] = !state.checklist[key];
-    saveState();
+    scheduleProfileSave();
     initChecklist();
   });
 
-  // Initial hub render
-  renderHub();
+  // Check auth state
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    await onSignedIn(session.user);
+  } else {
+    showLoginScreen();
+  }
+
+  // Listen for auth changes (e.g., after OAuth redirect)
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session && !currentUser) {
+      await onSignedIn(session.user);
+    } else if (event === 'SIGNED_OUT') {
+      showLoginScreen();
+    }
+  });
 }
 
 document.addEventListener('DOMContentLoaded', init);
