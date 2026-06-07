@@ -959,6 +959,33 @@ input:focus, textarea:focus, select:focus {
 .daily-message-icon { font-size: 18px; flex-shrink: 0; line-height: 1.4; }
 .daily-message-text { font-size: 13px; color: var(--text); font-weight: 500; line-height: 1.6; }
 
+/* ── Suggestion Tabs (multiple daily suggestions) ── */
+.suggestion-tabs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.suggestion-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.suggestion-tab:hover  { border-color: var(--primary); color: var(--primary); }
+.suggestion-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+.stab-time { font-size: 10px; opacity: .75; }
+.suggestion-tab.active .stab-time { opacity: .85; }
+
 /* ── Log Calendar ── */
 .log-cal-section {
   margin-top: 28px;
