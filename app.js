@@ -50,7 +50,7 @@ async function loadProfile() {
       .from('profiles')
       .select('*')
       .eq('id', currentUser.id)
-      .single();
+      .maybeSingle();
     data = res.data;
   } catch (e) {
     console.error('loadProfile error:', e);
@@ -549,9 +549,11 @@ async function init() {
     }
   });
 
-  // Fallback: explicitly check session after listener is attached
+  // Fallback: getSession also processes OAuth code in URL on page load
   const { data: { session } } = await sb.auth.getSession();
-  if (!session && !currentUser) {
+  if (session && !currentUser) {
+    await onSignedIn(session.user);
+  } else if (!session && !currentUser) {
     showLoginScreen();
   }
 }
