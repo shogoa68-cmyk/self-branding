@@ -9,8 +9,17 @@
 </head>
 <body>
 
+  <!-- ── ローディング画面 ── -->
+  <div id="loadingScreen" class="loading-screen">
+    <div class="loading-dot-row">
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+      <div class="loading-dot"></div>
+    </div>
+  </div>
+
   <!-- ── ログイン画面 ── -->
-  <div id="loginScreen" class="login-screen">
+  <div id="loginScreen" class="login-screen" hidden>
     <div class="login-card">
       <div class="login-logo"><span class="logo-star">✦</span> BrandMe</div>
       <p class="login-tagline">あなたの成長ナビゲーター</p>
@@ -250,6 +259,22 @@
 
       <!-- ── 行動計画タブ ── -->
       <section class="tab-content" id="tab-plan">
+
+        <!-- 進捗サマリー -->
+        <div class="progress-overview">
+          <div class="streak-card">
+            <span class="streak-flame">🔥</span>
+            <div class="streak-info">
+              <span class="streak-number" id="streakNumber">—</span>
+              <span class="streak-unit">日連続</span>
+            </div>
+            <p class="streak-sub">継続中</p>
+          </div>
+          <div class="week-card">
+            <p class="week-label">過去7日間のアクティビティ</p>
+            <div class="week-dots" id="weekDots"></div>
+          </div>
+        </div>
 
         <div class="checklist-progress-card">
           <div class="cl-bar-wrap">

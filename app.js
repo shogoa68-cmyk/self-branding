@@ -78,6 +78,7 @@ async function loadProfile() {
 
 let saveTimer;
 function scheduleProfileSave() {
+  setSaveStatus('saving');
   clearTimeout(saveTimer);
   saveTimer = setTimeout(flushProfileSave, 1200);
 }
@@ -99,18 +100,96 @@ async function flushProfileSave() {
     checklist:    state.checklist,
     updated_at:   new Date().toISOString(),
   });
-  if (error) console.error('save error:', error);
+  if (error) {
+    console.error('save error:', error);
+  } else {
+    setSaveStatus('saved');
+    upsertTodayLog();
+  }
+}
+
+// ─── Daily Log / Progress ─────────────────────────────────────────────────────
+async function upsertTodayLog() {
+  if (!currentUser) return;
+  const today = new Date().toISOString().split('T')[0];
+  const completed = Object.keys(state.checklist).filter(k => state.checklist[k]);
+  await sb.from('daily_logs').upsert(
+    { user_id: currentUser.id, date: today, completed_actions: completed },
+    { onConflict: 'user_id,date' }
+  );
+}
+
+async function loadStreak() {
+  if (!currentUser) return 0;
+  const { data } = await sb
+    .from('daily_logs')
+    .select('date')
+    .eq('user_id', currentUser.id)
+    .order('date', { ascending: false })
+    .limit(60);
+  if (!data || data.length === 0) return 0;
+
+  const dates = new Set(data.map(d => d.date));
+  const cur = new Date();
+  cur.setHours(0, 0, 0, 0);
+  let streak = 0;
+  while (true) {
+    const ds = cur.toISOString().split('T')[0];
+    if (dates.has(ds)) { streak++; cur.setDate(cur.getDate() - 1); }
+    else break;
+  }
+  return streak;
+}
+
+async function loadWeekActivity() {
+  if (!currentUser) return [];
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dates = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    dates.push(d.toISOString().split('T')[0]);
+  }
+  const { data } = await sb
+    .from('daily_logs').select('date')
+    .eq('user_id', currentUser.id).in('date', dates);
+  const active = new Set((data || []).map(d => d.date));
+  const todayStr = today.toISOString().split('T')[0];
+  return dates.map(d => ({ date: d, active: active.has(d), isToday: d === todayStr }));
+}
+
+function renderPlanStats(streak, weekActivity) {
+  const el = document.getElementById('streakNumber');
+  if (el) el.textContent = streak;
+  const dotsEl = document.getElementById('weekDots');
+  if (!dotsEl) return;
+  const DAY = ['日','月','火','水','木','金','土'];
+  dotsEl.innerHTML = weekActivity.map(({ date, active, isToday }) => {
+    const day = DAY[new Date(date + 'T00:00:00').getDay()];
+    return `<div class="week-dot-col">
+      <div class="week-dot${active ? ' active' : ''}${isToday ? ' today' : ''}"></div>
+      <span class="week-day">${day}</span>
+    </div>`;
+  }).join('');
+}
+
+async function refreshPlanStats() {
+  const [streak, week] = await Promise.all([loadStreak(), loadWeekActivity()]);
+  renderPlanStats(streak, week);
 }
 
 // ─── Screen management ────────────────────────────────────────────────────────
 function showLoginScreen() {
-  document.getElementById('loginScreen').hidden = false;
-  document.getElementById('appMain').hidden      = true;
+  document.getElementById('loadingScreen').hidden = true;
+  document.getElementById('loginScreen').hidden   = false;
+  document.getElementById('appMain').hidden       = true;
 }
 
 function showApp(user) {
-  document.getElementById('loginScreen').hidden = true;
-  document.getElementById('appMain').hidden      = false;
+  document.getElementById('loadingScreen').hidden = true;
+  document.getElementById('loginScreen').hidden   = true;
+  document.getElementById('appMain').hidden       = false;
 
   const name   = user.user_metadata?.full_name || user.email;
   const avatar = user.user_metadata?.avatar_url;
@@ -118,6 +197,7 @@ function showApp(user) {
   info.innerHTML = `
     ${avatar ? `<img class="user-avatar" src="${escHtml(avatar)}" alt="">` : ''}
     <span class="user-name">${escHtml(name)}</span>
+    <span class="save-status" id="saveStatus"></span>
     <button class="btn-signout" id="signOutBtn">ログアウト</button>
   `;
   document.getElementById('signOutBtn').addEventListener('click', signOut);
@@ -131,6 +211,8 @@ async function onSignedIn(user) {
   initChecklist();
   bindCopyBtns();
   renderHub();
+  upsertTodayLog();
+  refreshPlanStats();
 }
 
 // ─── Keyword / query extraction ───────────────────────────────────────────────
@@ -410,7 +492,7 @@ function switchTab(name) {
     sec.classList.toggle('active', sec.id === `tab-${name}`);
   });
   if (name === 'hub')  renderHub();
-  if (name === 'plan') updateChecklistProgress();
+  if (name === 'plan') { updateChecklistProgress(); refreshPlanStats(); }
 }
 
 // ─── Form binding ─────────────────────────────────────────────────────────────
@@ -452,6 +534,21 @@ function bindCopyBtns() {
       navigator.clipboard.writeText(el.value).then(() => showToast('コピーしました'));
     };
   });
+}
+
+// ─── Save status ─────────────────────────────────────────────────────────────
+function setSaveStatus(status) {
+  const el = document.getElementById('saveStatus');
+  if (!el) return;
+  clearTimeout(el._t);
+  if (status === 'saving') {
+    el.textContent = '保存中...';
+    el.dataset.status = 'saving';
+  } else if (status === 'saved') {
+    el.textContent = '✓ 保存済み';
+    el.dataset.status = 'saved';
+    el._t = setTimeout(() => { el.textContent = ''; el.dataset.status = ''; }, 2500);
+  }
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
