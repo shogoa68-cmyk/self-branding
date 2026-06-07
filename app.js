@@ -117,10 +117,10 @@ async function flushProfileSave() {
 async function upsertTodayLog() {
   if (!currentUser) return;
   const today = new Date().toISOString().split('T')[0];
-  const completed = Object.keys(state.checklist).filter(k => state.checklist[k]);
+  // ignoreDuplicates: row は streak カウント用の存在確認のみ。completed_actions は上書きしない
   await sb.from('daily_logs').upsert(
-    { user_id: currentUser.id, date: today, completed_actions: completed },
-    { onConflict: 'user_id,date' }
+    { user_id: currentUser.id, date: today },
+    { onConflict: 'user_id,date', ignoreDuplicates: true }
   );
 }
 
@@ -238,7 +238,7 @@ async function onSignedIn(user) {
 }
 
 // ─── Claude API via Edge Function ────────────────────────────────────────────
-async function callGenerate(type) {
+async function callGenerate(type, extra = {}) {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) throw new Error('Not authenticated');
 
@@ -248,7 +248,7 @@ async function callGenerate(type) {
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type':  'application/json',
     },
-    body: JSON.stringify({ type, profile: state.profile, target: state.target }),
+    body: JSON.stringify({ type, profile: state.profile, target: state.target, ...extra }),
   });
 
   if (!res.ok) {
@@ -453,9 +453,19 @@ async function generateDailyInput() {
   const btn = document.getElementById('genDailyBtn');
   setButtonLoading(btn, true);
   try {
-    const result = await callGenerate('daily');
+    // 過去14日のテーマを取得してバラつきを促す
+    const { data: recentLogs } = await sb
+      .from('daily_logs')
+      .select('content')
+      .eq('user_id', currentUser.id)
+      .order('date', { ascending: false })
+      .limit(14);
+    const recentThemes = (recentLogs || []).map(l => l.content?.theme).filter(Boolean);
+
+    const result = await callGenerate('daily', { recentThemes });
     state.dailyContent   = result;
     state.dailyCompleted = new Set();
+    calState.logs = null; // カレンダーキャッシュを無効化
     renderDailyInput(result);
     const today = new Date().toISOString().split('T')[0];
     await sb.from('daily_logs').upsert(
@@ -482,6 +492,105 @@ async function toggleDailyItem(key) {
     { user_id: currentUser.id, date: today, completed_actions: [...state.dailyCompleted] },
     { onConflict: 'user_id,date' }
   );
+}
+
+// ─── Calendar / Log ───────────────────────────────────────────────────────────
+let calState = { year: 0, month: 0, logs: null };
+
+async function loadAndRenderCalendar() {
+  const now = new Date();
+  if (calState.logs !== null && calState.year === now.getFullYear() && calState.month === now.getMonth()) {
+    renderCalendar(calState.year, calState.month, calState.logs);
+    return;
+  }
+  calState.year  = now.getFullYear();
+  calState.month = now.getMonth();
+  calState.logs  = await loadMonthLogs(calState.year, calState.month);
+  renderCalendar(calState.year, calState.month, calState.logs);
+}
+
+async function loadMonthLogs(year, month) {
+  if (!currentUser) return [];
+  const from = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const to   = new Date(year, month + 1, 0).toISOString().split('T')[0];
+  const { data } = await sb
+    .from('daily_logs')
+    .select('date, content, completed_actions')
+    .eq('user_id', currentUser.id)
+    .gte('date', from)
+    .lte('date', to);
+  return data || [];
+}
+
+function renderCalendar(year, month, logs) {
+  const label = document.getElementById('calMonthLabel');
+  if (label) label.textContent = `${year}年${month + 1}月`;
+
+  const grid = document.getElementById('calGrid');
+  if (!grid) return;
+
+  const logMap  = new Map(logs.map(l => [l.date, l]));
+  const firstDow = new Date(year, month, 1).getDay();
+  const lastDate = new Date(year, month + 1, 0).getDate();
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  let html = '';
+  for (let i = 0; i < firstDow; i++) html += `<div class="cal-cell cal-empty"></div>`;
+
+  for (let d = 1; d <= lastDate; d++) {
+    const ds  = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    const log = logMap.get(ds);
+    let cls   = '';
+    if (log) {
+      const dailyDone  = (log.completed_actions || []).filter(k => k.startsWith('learning_') || k.startsWith('action_')).length;
+      const total      = (log.content?.learning?.length || 0) + (log.content?.action?.length || 0);
+      cls = total === 0 ? 'cal-active' : dailyDone >= total ? 'cal-complete' : dailyDone > 0 ? 'cal-partial' : 'cal-active';
+    }
+    const todayCls = ds === todayStr ? ' cal-today' : '';
+    html += `<div class="cal-cell ${cls}${todayCls}" data-date="${ds}">${d}</div>`;
+  }
+  grid.innerHTML = html;
+
+  grid.querySelectorAll('.cal-cell[data-date]').forEach(cell => {
+    const log = logMap.get(cell.dataset.date);
+    if (!log) return;
+    cell.style.cursor = 'pointer';
+    cell.addEventListener('click', () => renderLogDetail(log, cell.dataset.date));
+  });
+}
+
+function renderLogDetail(log, dateStr) {
+  const el = document.getElementById('logDetail');
+  if (!el) return;
+  const content   = log.content || {};
+  const completed = new Set((log.completed_actions || []).filter(k => k.startsWith('learning_') || k.startsWith('action_')));
+  const learning  = Array.isArray(content.learning) ? content.learning : [];
+  const action    = Array.isArray(content.action)   ? content.action   : [];
+
+  const itemsHtml = (items, prefix) => items.map((text, i) => {
+    const done = completed.has(`${prefix}_${i}`);
+    return `<li class="${done ? 'log-done' : ''}"><span class="log-check-icon">${done ? '✓' : '○'}</span>${escHtml(text)}</li>`;
+  }).join('');
+
+  const d = new Date(dateStr + 'T00:00:00');
+  const dateLabel = d.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+  const total = learning.length + action.length;
+  const done  = completed.size;
+
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="log-detail-inner">
+      <div class="log-detail-head">
+        <div>
+          <p class="log-detail-date">${dateLabel}</p>
+          ${content.theme ? `<span class="log-detail-theme">${escHtml(content.theme)}</span>` : ''}
+        </div>
+        <span class="log-detail-score">${done}/${total} 完了</span>
+      </div>
+      ${learning.length ? `<div class="log-detail-block"><h4>📚 インプット</h4><ul>${itemsHtml(learning, 'learning')}</ul></div>` : ''}
+      ${action.length   ? `<div class="log-detail-block"><h4>⚡ アクション</h4><ul>${itemsHtml(action, 'action')}</ul></div>` : ''}
+      ${content.message ? `<p class="log-detail-msg">💬 ${escHtml(content.message)}</p>` : ''}
+    </div>`;
 }
 
 function renderDailyItem(text, key, extraLinks = []) {
@@ -636,7 +745,7 @@ function switchTab(name) {
     sec.classList.toggle('active', sec.id === `tab-${name}`);
   });
   if (name === 'hub')  renderHub();
-  if (name === 'plan') { updateChecklistProgress(); refreshPlanStats(); }
+  if (name === 'plan') { updateChecklistProgress(); refreshPlanStats(); loadAndRenderCalendar(); }
 }
 
 // ─── Form binding ─────────────────────────────────────────────────────────────
@@ -754,6 +863,22 @@ async function init() {
 
   // Today's input (daily)
   document.getElementById('genDailyBtn').addEventListener('click', generateDailyInput);
+
+  // Calendar navigation
+  document.getElementById('calPrev').addEventListener('click', async () => {
+    calState.month--;
+    if (calState.month < 0) { calState.month = 11; calState.year--; }
+    calState.logs = await loadMonthLogs(calState.year, calState.month);
+    renderCalendar(calState.year, calState.month, calState.logs);
+    document.getElementById('logDetail').hidden = true;
+  });
+  document.getElementById('calNext').addEventListener('click', async () => {
+    calState.month++;
+    if (calState.month > 11) { calState.month = 0; calState.year++; }
+    calState.logs = await loadMonthLogs(calState.year, calState.month);
+    renderCalendar(calState.year, calState.month, calState.logs);
+    document.getElementById('logDetail').hidden = true;
+  });
 
   // Daily task checkbox (event delegation)
   document.getElementById('dailyContent').addEventListener('click', e => {

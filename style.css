@@ -857,6 +857,118 @@ input:focus, textarea:focus, select:focus {
 .daily-message-icon { font-size: 18px; flex-shrink: 0; line-height: 1.4; }
 .daily-message-text { font-size: 13px; color: var(--text); font-weight: 500; line-height: 1.6; }
 
+/* ── Log Calendar ── */
+.log-cal-section {
+  margin-top: 28px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+}
+.log-cal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.log-cal-title { font-size: 15px; font-weight: 700; color: var(--text); margin: 0; }
+.cal-nav-group { display: flex; align-items: center; gap: 8px; }
+.cal-nav-btn {
+  width: 28px; height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color .15s;
+}
+.cal-nav-btn:hover { border-color: var(--primary); color: var(--primary); }
+.cal-month-label { font-size: 13px; font-weight: 600; color: var(--text); min-width: 72px; text-align: center; }
+
+.cal-day-headers {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-bottom: 4px;
+}
+.cal-day-headers span {
+  text-align: center;
+  font-size: 11px;
+  color: var(--text-light);
+  padding: 2px 0;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.cal-cell {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  background: var(--surface);
+  font-size: 11px;
+  color: var(--text-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity .15s;
+}
+.cal-empty  { background: transparent; }
+.cal-active   { background: var(--primary-light); color: var(--primary); font-weight: 600; }
+.cal-partial  { background: #C7D2FE; color: #3730A3; font-weight: 600; }
+.cal-complete { background: var(--primary); color: #fff; font-weight: 700; }
+.cal-today { outline: 2px solid var(--primary); outline-offset: -2px; }
+.cal-cell[style*="cursor"] { transition: opacity .15s, transform .1s; }
+.cal-cell[style*="cursor"]:hover { opacity: .8; transform: scale(1.08); }
+
+.cal-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text-light); }
+.legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.ld-active   { background: var(--primary-light); border: 1px solid #C7D2FE; }
+.ld-partial  { background: #C7D2FE; }
+.ld-complete { background: var(--primary); }
+
+/* ── Log Detail Panel ── */
+.log-detail {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.log-detail-inner { padding: 16px; }
+.log-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.log-detail-date  { font-size: 13px; font-weight: 700; color: var(--text); margin: 0 0 4px; }
+.log-detail-theme {
+  display: inline-block;
+  font-size: 11px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-weight: 600;
+}
+.log-detail-score { font-size: 12px; font-weight: 700; color: var(--primary); white-space: nowrap; }
+.log-detail-block { margin-bottom: 10px; }
+.log-detail-block h4 { font-size: 12px; font-weight: 700; color: var(--text-2); margin: 0 0 6px; }
+.log-detail-block ul { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.log-detail-block li { font-size: 13px; color: var(--text); display: flex; align-items: flex-start; gap: 6px; }
+.log-detail-block li.log-done { color: var(--text-light); text-decoration: line-through; }
+.log-check-icon { font-size: 11px; flex-shrink: 0; color: var(--primary); margin-top: 2px; }
+.log-detail-msg  { font-size: 13px; color: var(--text-2); margin: 8px 0 0; font-style: italic; line-height: 1.6; }
+
 /* ── Button loading state ── */
 .btn-generate-main:disabled { opacity: .65; cursor: not-allowed; transform: none; }
 .btn-sub-generate:disabled  { opacity: .65; cursor: not-allowed; transform: none; }

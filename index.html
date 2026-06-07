@@ -308,6 +308,28 @@
 
         <div id="checklistContainer"></div>
 
+        <!-- 活動ログ・カレンダー -->
+        <div class="log-cal-section">
+          <div class="log-cal-head">
+            <h2 class="log-cal-title">活動ログ</h2>
+            <div class="cal-nav-group">
+              <button class="cal-nav-btn" id="calPrev">‹</button>
+              <span class="cal-month-label" id="calMonthLabel"></span>
+              <button class="cal-nav-btn" id="calNext">›</button>
+            </div>
+          </div>
+          <div class="cal-day-headers">
+            <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="cal-legend">
+            <span class="legend-item"><i class="legend-dot ld-active"></i>活動あり</span>
+            <span class="legend-item"><i class="legend-dot ld-partial"></i>一部完了</span>
+            <span class="legend-item"><i class="legend-dot ld-complete"></i>全完了</span>
+          </div>
+        </div>
+        <div id="logDetail" class="log-detail" hidden></div>
+
       </section>
 
     </main>
