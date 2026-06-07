@@ -22,16 +22,22 @@ const PLATFORMS = {
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let state = {
-  profile:        { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '', lacks: '' },
-  target:         { targetRole: '', targetGoals: '', timeline: '', motivation: '' },
-  notion:         { token: '', dbId: '' },
-  queries:        null,
-  checklist:      {},
-  dailyContent:   null,
-  dailyCompleted: new Set(),
-  dailyNotes:     {},
-  noteExpanded:   new Set(),
+  profile:          { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '', lacks: '' },
+  target:           { targetRole: '', targetGoals: '', timeline: '', motivation: '' },
+  notion:           { token: '', dbId: '' },
+  queries:          null,
+  checklist:        {},
+  dailySuggestions: [],  // 今日の提案配列
+  dailyActiveIdx:   0,   // 表示中の提案インデックス
+  dailyCompleted:   new Set(),  // "{idx}_learning_0" 形式
+  dailyNotes:       {},         // "{idx}_learning_0": "note" 形式
+  noteExpanded:     new Set(),  // short key のみ（UI状態）
 };
+
+// 現在の提案インデックスを付与したキーを返す
+function scopedKey(shortKey) {
+  return `${state.dailyActiveIdx}_${shortKey}`;
+}
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
 async function signInWithGoogle() {
@@ -139,15 +145,29 @@ async function loadTodayLog() {
   const today = new Date().toISOString().split('T')[0];
   const { data } = await sb
     .from('daily_logs')
-    .select('content, completed_actions')
+    .select('content, completed_actions, notes')
     .eq('user_id', currentUser.id)
     .eq('date', today)
     .maybeSingle();
-  if (data?.content && Object.keys(data.content).length > 0) {
-    state.dailyContent   = data.content;
-    state.dailyCompleted = new Set(data.completed_actions || []);
-    renderDailyInput(state.dailyContent);
+  if (!data) return;
+
+  // 旧形式（オブジェクト）→ 配列に変換
+  let suggestions;
+  if (Array.isArray(data.content)) {
+    suggestions = data.content.filter(s => s && Object.keys(s).length > 0);
+  } else if (data.content && Object.keys(data.content).length > 0) {
+    suggestions = [{ ...data.content, generated_at: new Date().toISOString() }];
+  } else {
+    return;
   }
+  if (!suggestions.length) return;
+
+  state.dailySuggestions = suggestions;
+  state.dailyActiveIdx   = suggestions.length - 1;
+  state.dailyCompleted   = new Set(data.completed_actions || []);
+  state.dailyNotes       = data.notes || {};
+  renderSuggestionTabs();
+  renderDailyInput(suggestions[state.dailyActiveIdx]);
 }
 
 async function loadStreak() {
@@ -245,6 +265,8 @@ async function onSignedIn(user) {
   upsertTodayLog();
   loadTodayLog();
   refreshPlanStats();
+  // First-time users go to settings; returning users go to plan (dashboard)
+  switchTab(state.profile.profession ? 'plan' : 'profile');
 }
 
 // ─── Claude API via Edge Function ────────────────────────────────────────────
@@ -460,34 +482,45 @@ async function generateSnsProfiles() {
 
 // ─── Daily input generation ───────────────────────────────────────────────────
 async function generateDailyInput() {
-  if (state.dailyContent) {
-    if (!confirm('今日の提案はすでに生成されています。\n再生成すると進捗とメモが初期化されます。よろしいですか？')) return;
-  }
   const btn = document.getElementById('genDailyBtn');
   setButtonLoading(btn, true);
   try {
-    // 過去14日のテーマを取得してバラつきを促す
+    // 過去のテーマ（今日含む全配列）を収集してバラつきを促す
     const { data: recentLogs } = await sb
       .from('daily_logs')
       .select('content')
       .eq('user_id', currentUser.id)
       .order('date', { ascending: false })
       .limit(14);
-    const recentThemes = (recentLogs || []).map(l => l.content?.theme).filter(Boolean);
+    const recentThemes = (recentLogs || []).flatMap(l => {
+      const c = l.content;
+      if (Array.isArray(c)) return c.map(s => s.theme).filter(Boolean);
+      return c?.theme ? [c.theme] : [];
+    });
 
     const result = await callGenerate('daily', { recentThemes });
-    state.dailyContent   = result;
-    state.dailyCompleted = new Set();
-    state.dailyNotes     = {};
+    result.generated_at = new Date().toISOString();
+
+    state.dailySuggestions.push(result);
+    state.dailyActiveIdx = state.dailySuggestions.length - 1;
     state.noteExpanded   = new Set();
-    calState.logs = null;
+    calState.logs        = null;
+
+    renderSuggestionTabs();
     renderDailyInput(result);
+
     const today = new Date().toISOString().split('T')[0];
     await sb.from('daily_logs').upsert(
-      { user_id: currentUser.id, date: today, content: result, completed_actions: [] },
+      {
+        user_id:           currentUser.id,
+        date:              today,
+        content:           state.dailySuggestions,
+        completed_actions: [...state.dailyCompleted],
+        notes:             state.dailyNotes,
+      },
       { onConflict: 'user_id,date' }
     );
-    showToast('今日のインプットを生成しました');
+    showToast('提案を生成しました');
   } catch (e) {
     showToast('生成に失敗しました。プロフィールを入力してから試してください。');
   } finally {
@@ -495,13 +528,32 @@ async function generateDailyInput() {
   }
 }
 
+function renderSuggestionTabs() {
+  const el = document.getElementById('suggestionTabs');
+  if (!el) return;
+  if (state.dailySuggestions.length <= 1) { el.innerHTML = ''; return; }
+  el.innerHTML = state.dailySuggestions.map((s, i) => {
+    const t = new Date(s.generated_at || Date.now()).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    return `<button class="suggestion-tab${i === state.dailyActiveIdx ? ' active' : ''}" data-idx="${i}">提案${i + 1} <span class="stab-time">${t}</span></button>`;
+  }).join('');
+}
+
+function setActiveSuggestion(idx) {
+  state.dailyActiveIdx = idx;
+  state.noteExpanded   = new Set();
+  const titleEl = document.getElementById('dailySectionTitle');
+  if (titleEl) titleEl.textContent = '今日のインプット';
+  renderSuggestionTabs();
+  renderDailyInput(state.dailySuggestions[idx]);
+}
+
 async function toggleDailyItem(key) {
-  const wasDone = state.dailyCompleted.has(key);
-  if (wasDone) state.dailyCompleted.delete(key);
-  else         state.dailyCompleted.add(key);
+  const pKey    = scopedKey(key);
+  const wasDone = state.dailyCompleted.has(pKey);
+  if (wasDone) state.dailyCompleted.delete(pKey);
+  else         state.dailyCompleted.add(pKey);
   const done = !wasDone;
 
-  // ノートtextareaを破壊しないよう直接DOM更新
   const checkBtn = document.querySelector(`.daily-task-check[data-key="${CSS.escape(key)}"]`);
   if (checkBtn) {
     checkBtn.textContent = done ? '✓' : '';
@@ -510,11 +562,13 @@ async function toggleDailyItem(key) {
   }
 
   // プログレスバーを更新
-  if (state.dailyContent) {
-    const learning = Array.isArray(state.dailyContent.learning) ? state.dailyContent.learning : [];
-    const action   = Array.isArray(state.dailyContent.action)   ? state.dailyContent.action   : [];
+  const cur = state.dailySuggestions[state.dailyActiveIdx];
+  if (cur) {
+    const learning = Array.isArray(cur.learning) ? cur.learning : [];
+    const action   = Array.isArray(cur.action)   ? cur.action   : [];
     const total = learning.length + action.length;
-    const cnt   = [...state.dailyCompleted].filter(k => k.startsWith('learning_') || k.startsWith('action_')).length;
+    const ipfx  = `${state.dailyActiveIdx}_`;
+    const cnt   = [...state.dailyCompleted].filter(k => k.startsWith(`${ipfx}learning_`) || k.startsWith(`${ipfx}action_`)).length;
     const fill  = document.querySelector('.daily-progress-fill');
     const lbl   = document.querySelector('.daily-progress-label');
     if (fill) fill.style.width  = `${total ? Math.round(cnt / total * 100) : 0}%`;
@@ -523,7 +577,12 @@ async function toggleDailyItem(key) {
 
   const today = new Date().toISOString().split('T')[0];
   await sb.from('daily_logs').upsert(
-    { user_id: currentUser.id, date: today, completed_actions: [...state.dailyCompleted] },
+    {
+      user_id:           currentUser.id,
+      date:              today,
+      completed_actions: [...state.dailyCompleted],
+      notes:             state.dailyNotes,
+    },
     { onConflict: 'user_id,date' }
   );
 }
@@ -531,10 +590,11 @@ async function toggleDailyItem(key) {
 // ─── Notion ───────────────────────────────────────────────────────────────────
 async function saveToNotion() {
   if (!state.notion.token || !state.notion.dbId) {
-    showToast('プロフィールタブでNotion連携を設定してください');
+    showToast('設定タブでNotion連携を設定してください');
     return;
   }
-  if (!state.dailyContent) {
+  const currentSuggestion = state.dailySuggestions[state.dailyActiveIdx];
+  if (!currentSuggestion) {
     showToast('今日のインプットを生成してください');
     return;
   }
@@ -543,17 +603,25 @@ async function saveToNotion() {
   try {
     const { data: { session } } = await sb.auth.getSession();
     const today = new Date().toISOString().split('T')[0];
+    const pfx = `${state.dailyActiveIdx}_`;
+    const unscopedCompleted = [...state.dailyCompleted]
+      .filter(k => k.startsWith(pfx))
+      .map(k => k.slice(pfx.length));
+    const unscopedNotes = {};
+    Object.keys(state.dailyNotes).forEach(k => {
+      if (k.startsWith(pfx)) unscopedNotes[k.slice(pfx.length)] = state.dailyNotes[k];
+    });
     const res = await fetch(NOTION_FN_URL, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         date:      today,
-        theme:     state.dailyContent.theme,
-        learning:  state.dailyContent.learning,
-        action:    state.dailyContent.action,
-        message:   state.dailyContent.message,
-        notes:     state.dailyNotes,
-        completed: [...state.dailyCompleted],
+        theme:     currentSuggestion.theme,
+        learning:  currentSuggestion.learning,
+        action:    currentSuggestion.action,
+        message:   currentSuggestion.message,
+        notes:     unscopedNotes,
+        completed: unscopedCompleted,
       }),
     });
     if (!res.ok) {
@@ -640,8 +708,33 @@ function renderLogDetail(log, dateStr) {
   const el = document.getElementById('dailyContent');
   if (!el) return;
 
-  const content   = log.content || {};
-  const completed = new Set((log.completed_actions || []).filter(k => k.startsWith('learning_') || k.startsWith('action_')));
+  // Handle array format (multiple suggestions per day) — show last suggestion
+  let rawContent = log.content || {};
+  let suggIdx    = null;
+  if (Array.isArray(rawContent)) {
+    suggIdx    = rawContent.length - 1;
+    rawContent = rawContent[suggIdx] || {};
+  }
+  const content = rawContent;
+  // Normalize completed_actions: accept both unscoped (old) and scoped (new) keys
+  const completed = new Set(
+    (log.completed_actions || [])
+      .filter(k => {
+        if (k.startsWith('learning_') || k.startsWith('action_')) return true;
+        if (suggIdx !== null) {
+          const sp = `${suggIdx}_`;
+          return k.startsWith(`${sp}learning_`) || k.startsWith(`${sp}action_`);
+        }
+        return false;
+      })
+      .map(k => {
+        if (suggIdx !== null) {
+          const sp = `${suggIdx}_`;
+          if (k.startsWith(sp)) return k.slice(sp.length);
+        }
+        return k;
+      })
+  );
   const learning  = Array.isArray(content.learning) ? content.learning : [];
   const action    = Array.isArray(content.action)   ? content.action   : [];
   const total     = learning.length + action.length;
@@ -688,8 +781,10 @@ function renderLogDetail(log, dateStr) {
   document.getElementById('backTodayBtn')?.addEventListener('click', () => {
     const titleEl = document.getElementById('dailySectionTitle');
     if (titleEl) titleEl.textContent = '今日のインプット';
-    if (state.dailyContent) {
-      renderDailyInput(state.dailyContent);
+    const todaySugg = state.dailySuggestions[state.dailyActiveIdx];
+    if (todaySugg) {
+      renderSuggestionTabs();
+      renderDailyInput(todaySugg);
     } else {
       el.innerHTML = '<p class="daily-placeholder">ボタンを押すと、今日のフォーカス・学習・アクションが生成されます</p>';
     }
@@ -697,9 +792,9 @@ function renderLogDetail(log, dateStr) {
 }
 
 function renderDailyItem(text, key, extraLinks = []) {
-  const done     = state.dailyCompleted.has(key);
+  const done     = state.dailyCompleted.has(scopedKey(key));
   const expanded = state.noteExpanded.has(key);
-  const note     = state.dailyNotes[key] || '';
+  const note     = state.dailyNotes[scopedKey(key)] || '';
   const gUrl     = PLATFORMS.google.url(text);
   const links    = [
     `<a class="daily-task-link" href="${gUrl}" target="_blank" rel="noopener noreferrer"><span class="task-link-dot" style="background:#4285F4"></span>Google</a>`,
@@ -735,7 +830,8 @@ function renderDailyInput(result) {
   const actionHtml   = action.map((t, i)   => renderDailyItem(t, `action_${i}`)).join('');
 
   const total = learning.length + action.length;
-  const done  = [...state.dailyCompleted].filter(k => k.startsWith('learning_') || k.startsWith('action_')).length;
+  const dpfx  = `${state.dailyActiveIdx}_`;
+  const done  = [...state.dailyCompleted].filter(k => k.startsWith(`${dpfx}learning_`) || k.startsWith(`${dpfx}action_`)).length;
 
   el.innerHTML = `
     <div class="daily-theme">
@@ -1011,7 +1107,7 @@ async function init() {
       const taskBody = noteBtn.closest('.daily-task-body');
       const existing = taskBody.querySelector('.note-textarea');
       if (existing) {
-        state.dailyNotes[key] = existing.value;
+        state.dailyNotes[scopedKey(key)] = existing.value;
         state.noteExpanded.delete(key);
         existing.remove();
         noteBtn.classList.remove('active');
@@ -1021,7 +1117,7 @@ async function init() {
         ta.dataset.key = key;
         ta.placeholder = 'メモを入力...';
         ta.rows        = 2;
-        ta.value       = state.dailyNotes[key] || '';
+        ta.value       = state.dailyNotes[scopedKey(key)] || '';
         taskBody.appendChild(ta);
         state.noteExpanded.add(key);
         noteBtn.classList.add('active');
@@ -1033,7 +1129,13 @@ async function init() {
   // Note textarea input (save to state without re-render)
   document.getElementById('dailyContent').addEventListener('input', e => {
     const ta = e.target.closest('.note-textarea');
-    if (ta) state.dailyNotes[ta.dataset.key] = ta.value;
+    if (ta) state.dailyNotes[scopedKey(ta.dataset.key)] = ta.value;
+  });
+
+  // Suggestion tabs click (multiple suggestions per day)
+  document.getElementById('suggestionTabs').addEventListener('click', e => {
+    const btn = e.target.closest('.suggestion-tab');
+    if (btn) setActiveSuggestion(Number(btn.dataset.idx));
   });
 
   // Rec sub-tabs
