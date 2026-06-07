@@ -152,6 +152,25 @@
           </div>
         </div>
 
+        <div class="section-header">
+          <span class="section-badge badge-integration">Notion連携</span>
+          <p class="section-desc">今日のノートをNotionデータベースに自動保存できます。</p>
+        </div>
+        <div class="card">
+          <div class="form-group">
+            <label>インテグレーショントークン</label>
+            <input type="password" data-section="notion" data-field="token"
+              placeholder="secret_...">
+            <p class="field-hint">notion.so/my-integrations で取得 → 「内部インテグレーション」を作成</p>
+          </div>
+          <div class="form-group">
+            <label>データベースID</label>
+            <input type="text" data-section="notion" data-field="dbId"
+              placeholder="NotionのDBページURLまたは32文字のID">
+            <p class="field-hint">DBページを開き「...」→「接続先」でインテグレーションを追加してから、URLをそのまま貼り付けてOK</p>
+          </div>
+        </div>
+
         <button class="btn-generate-main" id="generateBtn">
           🔍 コンテンツ・推薦クエリを生成する
         </button>

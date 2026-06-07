@@ -235,7 +235,8 @@ body {
 }
 .badge-current { background: var(--primary-light); color: var(--primary); }
 .badge-target  { background: var(--accent-light);  color: var(--accent); }
-.badge-lacks   { background: #FEF3C7;              color: #D97706; }
+.badge-lacks        { background: #FEF3C7; color: #D97706; }
+.badge-integration  { background: #F1F0EF; color: #37352F; }
 
 .section-desc { color: var(--text-2); font-size: 13px; }
 
@@ -799,6 +800,73 @@ input:focus, textarea:focus, select:focus {
   color: var(--text-light);
   text-decoration: line-through;
 }
+.daily-task-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+.note-toggle-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: .45;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity .15s, background .15s;
+}
+.note-toggle-btn:hover,
+.note-toggle-btn.active { opacity: 1; background: var(--primary-light); }
+.note-textarea {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #FAFAFA;
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.6;
+  resize: vertical;
+  font-family: inherit;
+  transition: border-color .15s;
+  box-sizing: border-box;
+}
+.note-textarea:focus { outline: none; border-color: var(--primary); background: #fff; }
+
+/* Notion save row */
+.notion-save-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.btn-notion-save {
+  padding: 8px 16px;
+  background: #37352F;
+  color: #fff;
+  border: none;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.btn-notion-save:hover    { opacity: .85; }
+.btn-notion-save:disabled { opacity: .4; cursor: not-allowed; }
+.btn-notion-save.loading  { opacity: .6; cursor: not-allowed; }
+.notion-hint { font-size: 11px; color: var(--text-light); margin: 0; }
+
+/* Field hint (below inputs in settings) */
+.field-hint { font-size: 11px; color: var(--text-light); margin: 4px 0 0; line-height: 1.5; }
+
 .daily-task-links {
   display: flex;
   gap: 6px;

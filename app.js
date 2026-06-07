@@ -4,6 +4,7 @@
 const SUPABASE_URL      = 'https://vfgzvbhusyxzmefugsdw.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmZ3p2Ymh1c3l4em1lZnVnc2R3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NzA1MTQsImV4cCI6MjA5NjM0NjUxNH0.85MvRWCTkZqRXzllDwOZKIs253_XlTIkT-7xgBukDeE';
 const EDGE_FN_URL       = `${SUPABASE_URL}/functions/v1/generate`;
+const NOTION_FN_URL     = `${SUPABASE_URL}/functions/v1/notion`;
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
@@ -23,10 +24,13 @@ const PLATFORMS = {
 let state = {
   profile:        { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '', lacks: '' },
   target:         { targetRole: '', targetGoals: '', timeline: '', motivation: '' },
+  notion:         { token: '', dbId: '' },
   queries:        null,
   checklist:      {},
   dailyContent:   null,
   dailyCompleted: new Set(),
+  dailyNotes:     {},
+  noteExpanded:   new Set(),
 };
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -77,6 +81,10 @@ async function loadProfile() {
     timeline:    data.timeline     || '',
     motivation:  data.motivation   || '',
   };
+  state.notion = {
+    token: data.notion_token || '',
+    dbId:  data.notion_db_id || '',
+  };
   state.checklist = data.checklist || {};
 }
 
@@ -98,6 +106,8 @@ async function flushProfileSave() {
     skills:       state.profile.skills,
     hobbies:      state.profile.hobbies,
     lacks:        state.profile.lacks,
+    notion_token: state.notion.token,
+    notion_db_id: state.notion.dbId,
     target_role:  state.target.targetRole,
     target_goals: state.target.targetGoals,
     timeline:     state.target.timeline,
@@ -465,7 +475,9 @@ async function generateDailyInput() {
     const result = await callGenerate('daily', { recentThemes });
     state.dailyContent   = result;
     state.dailyCompleted = new Set();
-    calState.logs = null; // カレンダーキャッシュを無効化
+    state.dailyNotes     = {};
+    state.noteExpanded   = new Set();
+    calState.logs = null;
     renderDailyInput(result);
     const today = new Date().toISOString().split('T')[0];
     await sb.from('daily_logs').upsert(
@@ -481,17 +493,76 @@ async function generateDailyInput() {
 }
 
 async function toggleDailyItem(key) {
-  if (state.dailyCompleted.has(key)) {
-    state.dailyCompleted.delete(key);
-  } else {
-    state.dailyCompleted.add(key);
+  const wasDone = state.dailyCompleted.has(key);
+  if (wasDone) state.dailyCompleted.delete(key);
+  else         state.dailyCompleted.add(key);
+  const done = !wasDone;
+
+  // ノートtextareaを破壊しないよう直接DOM更新
+  const checkBtn = document.querySelector(`.daily-task-check[data-key="${CSS.escape(key)}"]`);
+  if (checkBtn) {
+    checkBtn.textContent = done ? '✓' : '';
+    checkBtn.setAttribute('aria-pressed', done);
+    checkBtn.closest('.daily-task-item')?.classList.toggle('done', done);
   }
-  if (state.dailyContent) renderDailyInput(state.dailyContent);
+
+  // プログレスバーを更新
+  if (state.dailyContent) {
+    const learning = Array.isArray(state.dailyContent.learning) ? state.dailyContent.learning : [];
+    const action   = Array.isArray(state.dailyContent.action)   ? state.dailyContent.action   : [];
+    const total = learning.length + action.length;
+    const cnt   = [...state.dailyCompleted].filter(k => k.startsWith('learning_') || k.startsWith('action_')).length;
+    const fill  = document.querySelector('.daily-progress-fill');
+    const lbl   = document.querySelector('.daily-progress-label');
+    if (fill) fill.style.width  = `${total ? Math.round(cnt / total * 100) : 0}%`;
+    if (lbl)  lbl.textContent   = `${cnt} / ${total} 完了`;
+  }
+
   const today = new Date().toISOString().split('T')[0];
   await sb.from('daily_logs').upsert(
     { user_id: currentUser.id, date: today, completed_actions: [...state.dailyCompleted] },
     { onConflict: 'user_id,date' }
   );
+}
+
+// ─── Notion ───────────────────────────────────────────────────────────────────
+async function saveToNotion() {
+  if (!state.notion.token || !state.notion.dbId) {
+    showToast('プロフィールタブでNotion連携を設定してください');
+    return;
+  }
+  if (!state.dailyContent) {
+    showToast('今日のインプットを生成してください');
+    return;
+  }
+  const btn = document.getElementById('notionSaveBtn');
+  setButtonLoading(btn, true, '保存中...');
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const today = new Date().toISOString().split('T')[0];
+    const res = await fetch(NOTION_FN_URL, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        date:      today,
+        theme:     state.dailyContent.theme,
+        learning:  state.dailyContent.learning,
+        action:    state.dailyContent.action,
+        message:   state.dailyContent.message,
+        notes:     state.dailyNotes,
+        completed: [...state.dailyCompleted],
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Notion保存に失敗しました');
+    }
+    showToast('Notionに保存しました ✓');
+  } catch (e) {
+    showToast(e.message || 'Notion保存に失敗しました');
+  } finally {
+    setButtonLoading(btn, false);
+  }
 }
 
 // ─── Calendar / Log ───────────────────────────────────────────────────────────
@@ -594,18 +665,27 @@ function renderLogDetail(log, dateStr) {
 }
 
 function renderDailyItem(text, key, extraLinks = []) {
-  const done = state.dailyCompleted.has(key);
-  const gUrl = PLATFORMS.google.url(text);
-  const links = [
+  const done     = state.dailyCompleted.has(key);
+  const expanded = state.noteExpanded.has(key);
+  const note     = state.dailyNotes[key] || '';
+  const gUrl     = PLATFORMS.google.url(text);
+  const links    = [
     `<a class="daily-task-link" href="${gUrl}" target="_blank" rel="noopener noreferrer"><span class="task-link-dot" style="background:#4285F4"></span>Google</a>`,
     ...extraLinks,
   ].join('');
+  const noteArea = expanded
+    ? `<textarea class="note-textarea" data-key="${escAttr(key)}" placeholder="メモを入力..." rows="2">${escHtml(note)}</textarea>`
+    : '';
   return `
     <li class="daily-task-item${done ? ' done' : ''}">
       <button class="daily-task-check" data-key="${escAttr(key)}" aria-pressed="${done}">${done ? '✓' : ''}</button>
       <div class="daily-task-body">
-        <span class="daily-task-text">${escHtml(text)}</span>
+        <div class="daily-task-row">
+          <span class="daily-task-text">${escHtml(text)}</span>
+          <button class="note-toggle-btn${expanded ? ' active' : ''}" data-key="${escAttr(key)}" title="メモ">📝</button>
+        </div>
         <div class="daily-task-links">${links}</div>
+        ${noteArea}
       </div>
     </li>`;
 }
@@ -647,7 +727,15 @@ function renderDailyInput(result) {
     <div class="daily-message">
       <span class="daily-message-icon">💬</span>
       <p class="daily-message-text">${escHtml(result.message || '')}</p>
+    </div>
+    <div class="notion-save-row">
+      <button class="btn-notion-save" id="notionSaveBtn" ${state.notion.token && state.notion.dbId ? '' : 'disabled'}>
+        📓 Notionに保存
+      </button>
+      ${!state.notion.token || !state.notion.dbId ? '<p class="notion-hint">プロフィールタブでNotion連携を設定すると保存できます</p>' : ''}
     </div>`;
+
+  document.getElementById('notionSaveBtn')?.addEventListener('click', saveToNotion);
 }
 
 function updateCharCount(textarea, max) {
@@ -880,11 +968,40 @@ async function init() {
     document.getElementById('logDetail').hidden = true;
   });
 
-  // Daily task checkbox (event delegation)
+  // Daily task: checkbox toggle + note toggle (event delegation)
   document.getElementById('dailyContent').addEventListener('click', e => {
-    const btn = e.target.closest('.daily-task-check');
-    if (!btn) return;
-    toggleDailyItem(btn.dataset.key);
+    const checkBtn = e.target.closest('.daily-task-check');
+    if (checkBtn) { toggleDailyItem(checkBtn.dataset.key); return; }
+
+    const noteBtn = e.target.closest('.note-toggle-btn');
+    if (noteBtn) {
+      const key      = noteBtn.dataset.key;
+      const taskBody = noteBtn.closest('.daily-task-body');
+      const existing = taskBody.querySelector('.note-textarea');
+      if (existing) {
+        state.dailyNotes[key] = existing.value;
+        state.noteExpanded.delete(key);
+        existing.remove();
+        noteBtn.classList.remove('active');
+      } else {
+        const ta = document.createElement('textarea');
+        ta.className   = 'note-textarea';
+        ta.dataset.key = key;
+        ta.placeholder = 'メモを入力...';
+        ta.rows        = 2;
+        ta.value       = state.dailyNotes[key] || '';
+        taskBody.appendChild(ta);
+        state.noteExpanded.add(key);
+        noteBtn.classList.add('active');
+        ta.focus();
+      }
+    }
+  });
+
+  // Note textarea input (save to state without re-render)
+  document.getElementById('dailyContent').addEventListener('input', e => {
+    const ta = e.target.closest('.note-textarea');
+    if (ta) state.dailyNotes[ta.dataset.key] = ta.value;
   });
 
   // Rec sub-tabs
