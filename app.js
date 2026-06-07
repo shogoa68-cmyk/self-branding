@@ -21,10 +21,12 @@ const PLATFORMS = {
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let state = {
-  profile:   { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '' },
-  target:    { targetRole: '', targetGoals: '', timeline: '', motivation: '' },
-  queries:   null,
-  checklist: {},
+  profile:        { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '' },
+  target:         { targetRole: '', targetGoals: '', timeline: '', motivation: '' },
+  queries:        null,
+  checklist:      {},
+  dailyContent:   null,
+  dailyCompleted: new Set(),
 };
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -120,6 +122,22 @@ async function upsertTodayLog() {
   );
 }
 
+async function loadTodayLog() {
+  if (!currentUser) return;
+  const today = new Date().toISOString().split('T')[0];
+  const { data } = await sb
+    .from('daily_logs')
+    .select('content, completed_actions')
+    .eq('user_id', currentUser.id)
+    .eq('date', today)
+    .maybeSingle();
+  if (data?.content && Object.keys(data.content).length > 0) {
+    state.dailyContent   = data.content;
+    state.dailyCompleted = new Set(data.completed_actions || []);
+    renderDailyInput(state.dailyContent);
+  }
+}
+
 async function loadStreak() {
   if (!currentUser) return 0;
   const { data } = await sb
@@ -213,6 +231,7 @@ async function onSignedIn(user) {
   bindCopyBtns();
   renderHub();
   upsertTodayLog();
+  loadTodayLog();
   refreshPlanStats();
 }
 
@@ -433,12 +452,12 @@ async function generateDailyInput() {
   setButtonLoading(btn, true);
   try {
     const result = await callGenerate('daily');
+    state.dailyContent   = result;
+    state.dailyCompleted = new Set();
     renderDailyInput(result);
-    // 生成内容を daily_logs に保存
     const today = new Date().toISOString().split('T')[0];
     await sb.from('daily_logs').upsert(
-      { user_id: currentUser.id, date: today, content: result,
-        completed_actions: Object.keys(state.checklist).filter(k => state.checklist[k]) },
+      { user_id: currentUser.id, date: today, content: result, completed_actions: [] },
       { onConflict: 'user_id,date' }
     );
     showToast('今日のインプットを生成しました');
@@ -449,24 +468,69 @@ async function generateDailyInput() {
   }
 }
 
+async function toggleDailyItem(key) {
+  if (state.dailyCompleted.has(key)) {
+    state.dailyCompleted.delete(key);
+  } else {
+    state.dailyCompleted.add(key);
+  }
+  if (state.dailyContent) renderDailyInput(state.dailyContent);
+  const today = new Date().toISOString().split('T')[0];
+  await sb.from('daily_logs').upsert(
+    { user_id: currentUser.id, date: today, completed_actions: [...state.dailyCompleted] },
+    { onConflict: 'user_id,date' }
+  );
+}
+
+function renderDailyItem(text, key, extraLinks = []) {
+  const done = state.dailyCompleted.has(key);
+  const gUrl = PLATFORMS.google.url(text);
+  const links = [
+    `<a class="daily-task-link" href="${gUrl}" target="_blank" rel="noopener noreferrer"><span class="task-link-dot" style="background:#4285F4"></span>Google</a>`,
+    ...extraLinks,
+  ].join('');
+  return `
+    <li class="daily-task-item${done ? ' done' : ''}">
+      <button class="daily-task-check" data-key="${escAttr(key)}" aria-pressed="${done}">${done ? '✓' : ''}</button>
+      <div class="daily-task-body">
+        <span class="daily-task-text">${escHtml(text)}</span>
+        <div class="daily-task-links">${links}</div>
+      </div>
+    </li>`;
+}
+
 function renderDailyInput(result) {
   const el = document.getElementById('dailyContent');
   if (!el) return;
   const learning = Array.isArray(result.learning) ? result.learning : [];
   const action   = Array.isArray(result.action)   ? result.action   : [];
+
+  const ytLink = text =>
+    `<a class="daily-task-link" href="${PLATFORMS.youtube.url(text)}" target="_blank" rel="noopener noreferrer"><span class="task-link-dot" style="background:#FF0000"></span>YouTube</a>`;
+
+  const learningHtml = learning.map((t, i) => renderDailyItem(t, `learning_${i}`, [ytLink(t)])).join('');
+  const actionHtml   = action.map((t, i)   => renderDailyItem(t, `action_${i}`)).join('');
+
+  const total = learning.length + action.length;
+  const done  = [...state.dailyCompleted].filter(k => k.startsWith('learning_') || k.startsWith('action_')).length;
+
   el.innerHTML = `
     <div class="daily-theme">
       <span class="daily-theme-label">今日のテーマ</span>
       <p class="daily-theme-text">${escHtml(result.theme || '')}</p>
     </div>
+    <div class="daily-progress-bar">
+      <div class="daily-progress-fill" style="width:${total ? Math.round(done / total * 100) : 0}%"></div>
+    </div>
+    <p class="daily-progress-label">${done} / ${total} 完了</p>
     <div class="daily-grid">
       <div class="daily-block">
         <h4 class="daily-block-title">📚 インプット</h4>
-        <ul class="daily-list">${learning.map(i => `<li>${escHtml(i)}</li>`).join('')}</ul>
+        <ul class="daily-list">${learningHtml}</ul>
       </div>
       <div class="daily-block">
         <h4 class="daily-block-title">⚡ アクション</h4>
-        <ul class="daily-list">${action.map(i => `<li>${escHtml(i)}</li>`).join('')}</ul>
+        <ul class="daily-list">${actionHtml}</ul>
       </div>
     </div>
     <div class="daily-message">
@@ -688,6 +752,13 @@ async function init() {
 
   // Today's input (daily)
   document.getElementById('genDailyBtn').addEventListener('click', generateDailyInput);
+
+  // Daily task checkbox (event delegation)
+  document.getElementById('dailyContent').addEventListener('click', e => {
+    const btn = e.target.closest('.daily-task-check');
+    if (!btn) return;
+    toggleDailyItem(btn.dataset.key);
+  });
 
   // Rec sub-tabs
   document.querySelectorAll('.rec-tab').forEach(btn => {

@@ -750,21 +750,98 @@ input:focus, textarea:focus, select:focus {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
-.daily-list li {
+
+/* daily task items */
+.daily-task-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.daily-task-check {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 6px;
+  border: 2px solid var(--border);
+  background: #fff;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color .15s, background .15s;
+}
+.daily-task-item.done .daily-task-check {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+.daily-task-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.daily-task-text {
   font-size: 13px;
   color: var(--text);
-  padding-left: 14px;
-  position: relative;
   line-height: 1.5;
 }
-.daily-list li::before {
-  content: '•';
-  position: absolute;
-  left: 0;
-  color: var(--primary);
-  font-weight: 700;
+.daily-task-item.done .daily-task-text {
+  color: var(--text-light);
+  text-decoration: line-through;
+}
+.daily-task-links {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.daily-task-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-light);
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+  transition: border-color .15s, color .15s;
+}
+.daily-task-link:hover { border-color: var(--primary); color: var(--primary); }
+.task-link-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* daily progress */
+.daily-progress-bar {
+  height: 4px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 4px 0 2px;
+}
+.daily-progress-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 4px;
+  transition: width .3s ease;
+}
+.daily-progress-label {
+  font-size: 11px;
+  color: var(--text-light);
+  margin-bottom: 8px;
 }
 
 .daily-message {
