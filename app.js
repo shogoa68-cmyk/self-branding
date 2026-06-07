@@ -44,11 +44,18 @@ async function signOut() {
 // ─── Supabase DB ──────────────────────────────────────────────────────────────
 async function loadProfile() {
   if (!currentUser) return;
-  const { data } = await sb
-    .from('profiles')
-    .select('*')
-    .eq('id', currentUser.id)
-    .single();
+  let data;
+  try {
+    const res = await sb
+      .from('profiles')
+      .select('*')
+      .eq('id', currentUser.id)
+      .single();
+    data = res.data;
+  } catch (e) {
+    console.error('loadProfile error:', e);
+    return;
+  }
 
   if (!data) return;
 
@@ -532,22 +539,21 @@ async function init() {
     initChecklist();
   });
 
-  // Check auth state
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    await onSignedIn(session.user);
-  } else {
-    showLoginScreen();
-  }
-
-  // Listen for auth changes (e.g., after OAuth redirect)
+  // Auth state listener (set up BEFORE getSession to catch INITIAL_SESSION)
   sb.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_IN' && session && !currentUser) {
+    if (session && !currentUser) {
       await onSignedIn(session.user);
-    } else if (event === 'SIGNED_OUT') {
+    } else if (!session && event === 'SIGNED_OUT') {
+      currentUser = null;
       showLoginScreen();
     }
   });
+
+  // Fallback: explicitly check session after listener is attached
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session && !currentUser) {
+    showLoginScreen();
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
