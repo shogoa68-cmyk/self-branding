@@ -3,6 +3,7 @@
 // ─── Supabase ─────────────────────────────────────────────────────────────────
 const SUPABASE_URL      = 'https://vfgzvbhusyxzmefugsdw.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmZ3p2Ymh1c3l4em1lZnVnc2R3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NzA1MTQsImV4cCI6MjA5NjM0NjUxNH0.85MvRWCTkZqRXzllDwOZKIs253_XlTIkT-7xgBukDeE';
+const EDGE_FN_URL       = `${SUPABASE_URL}/functions/v1/generate`;
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
@@ -215,6 +216,41 @@ async function onSignedIn(user) {
   refreshPlanStats();
 }
 
+// ─── Claude API via Edge Function ────────────────────────────────────────────
+async function callGenerate(type) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const res = await fetch(EDGE_FN_URL, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type':  'application/json',
+    },
+    body: JSON.stringify({ type, profile: state.profile, target: state.target }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Generation failed');
+  }
+  const data = await res.json();
+  return data.result;
+}
+
+function setButtonLoading(btn, loading, label = '生成中...') {
+  if (!btn) return;
+  btn.disabled = loading;
+  if (loading) {
+    btn.dataset.orig = btn.textContent;
+    btn.textContent  = label;
+    btn.classList.add('loading');
+  } else {
+    btn.textContent = btn.dataset.orig || btn.textContent;
+    btn.classList.remove('loading');
+  }
+}
+
 // ─── Keyword / query extraction ───────────────────────────────────────────────
 function tokenize(text) {
   if (!text) return [];
@@ -337,64 +373,106 @@ function renderHub() {
 }
 
 // ─── Brand statement generation ───────────────────────────────────────────────
-function generateStatement() {
-  const p = state.profile;
-  const t = state.target;
+async function generateStatement() {
+  const btn = document.getElementById('genStatementBtn');
+  setButtonLoading(btn, true);
+  try {
+    const result = await callGenerate('statement');
+    const statement = result.statement || '';
+    const pitch     = result.pitch     || '';
 
-  const role      = p.profession || '専門家';
-  const skills    = tokenize(p.skills).slice(0, 3).join('・') || 'スキル';
-  const tRole     = t.targetRole || '理想の姿';
-  const period    = t.timeline   || '近い将来';
-  const why       = t.motivation || '自分のビジョンを実現するため';
+    document.getElementById('statementBlock').innerHTML = `
+      <p style="text-align:left;padding:14px 16px;font-size:15px;font-weight:500;color:var(--text);line-height:1.7">${escHtml(statement)}</p>
+      <div class="gen-actions">
+        <button class="btn-copy" data-copy="${escAttr(statement)}">📋 コピー</button>
+      </div>`;
 
-  const statement = `${role}として${skills}を武器に、${period}で${tRole}へ。${why}。`;
-  const pitch     = `はじめまして。私は${role}として${skills}の経験を持ちます。\n現在は${tRole}を目指し、日々スキルアップに取り組んでいます。\n${why}という想いで活動しています。`;
+    document.getElementById('pitchBlock').innerHTML = `
+      <p style="text-align:left;padding:14px 16px;white-space:pre-line;font-size:14px;color:var(--text);line-height:1.8">${escHtml(pitch)}</p>
+      <div class="gen-actions">
+        <button class="btn-copy" data-copy="${escAttr(pitch)}">📋 コピー</button>
+      </div>`;
 
-  document.getElementById('statementBlock').innerHTML = `
-    <p class="gen-placeholder" style="text-align:left;padding:14px 16px;font-size:15px;font-weight:500;color:var(--text)">${escHtml(statement)}</p>
-    <div class="gen-actions">
-      <button class="btn-copy" data-copy="${escAttr(statement)}">📋 コピー</button>
-    </div>`;
-
-  document.getElementById('pitchBlock').innerHTML = `
-    <p class="gen-placeholder" style="text-align:left;padding:14px 16px;white-space:pre-line;font-size:14px;color:var(--text)">${escHtml(pitch)}</p>
-    <div class="gen-actions">
-      <button class="btn-copy" data-copy="${escAttr(pitch)}">📋 コピー</button>
-    </div>`;
-
-  bindCopyBtns();
+    bindCopyBtns();
+    showToast('ブランドステートメントを生成しました');
+  } catch (e) {
+    showToast('生成に失敗しました。プロフィールを入力してから試してください。');
+  } finally {
+    setButtonLoading(btn, false);
+  }
 }
 
 // ─── SNS profile generation ───────────────────────────────────────────────────
-function generateSnsProfiles() {
-  const p = state.profile;
-  const t = state.target;
+async function generateSnsProfiles() {
+  const btn = document.getElementById('genSnsBtn');
+  setButtonLoading(btn, true);
+  try {
+    const result = await callGenerate('sns');
+    [
+      { id: 'xText',        key: 'x',        max: 160 },
+      { id: 'linkedinText', key: 'linkedin',  max: 220 },
+      { id: 'githubText',   key: 'github',    max: 160 },
+      { id: 'wantedlyText', key: 'wantedly',  max: 500 },
+    ].forEach(({ id, key, max }) => {
+      const el = document.getElementById(id);
+      if (!el || !result[key]) return;
+      el.value = result[key].slice(0, max);
+      updateCharCount(el, max);
+    });
+    showToast('SNSプロフィールを生成しました');
+  } catch (e) {
+    showToast('生成に失敗しました。プロフィールを入力してから試してください。');
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
 
-  const role   = p.profession || '専門家';
-  const skills = tokenize(p.skills).slice(0, 3).join(' / ') || 'スキル';
-  const tRole  = t.targetRole || '成長中';
-  const hobby  = tokenize(p.hobbies).slice(0, 2).join('・') || '探求中';
-  const period = t.timeline   || '近い将来';
-  const why    = t.motivation || '';
+// ─── Daily input generation ───────────────────────────────────────────────────
+async function generateDailyInput() {
+  const btn = document.getElementById('genDailyBtn');
+  setButtonLoading(btn, true);
+  try {
+    const result = await callGenerate('daily');
+    renderDailyInput(result);
+    // 生成内容を daily_logs に保存
+    const today = new Date().toISOString().split('T')[0];
+    await sb.from('daily_logs').upsert(
+      { user_id: currentUser.id, date: today, content: result,
+        completed_actions: Object.keys(state.checklist).filter(k => state.checklist[k]) },
+      { onConflict: 'user_id,date' }
+    );
+    showToast('今日のインプットを生成しました');
+  } catch (e) {
+    showToast('生成に失敗しました。プロフィールを入力してから試してください。');
+  } finally {
+    setButtonLoading(btn, false);
+  }
+}
 
-  const profiles = {
-    x:        `${role} | ${skills} | ${tRole}を目指して発信中 | ${hobby}好き`,
-    linkedin: `${role} ▶ ${skills} の専門家。${period}で${tRole}へのキャリアを歩んでいます。${why ? why.slice(0, 60) : ''}`,
-    github:   `${role} | ${skills} | Open to collaboration`,
-    wantedly: `【${role}】\n\nスキル: ${skills}\n\n${p.career ? p.career.slice(0, 100) : ''}\n\n目標: ${tRole}を目指し、${why || 'スキルアップ'}に取り組んでいます。${p.hobbies ? `\n\n趣味: ${p.hobbies.slice(0, 80)}` : ''}`,
-  };
-
-  [
-    { id: 'xText',        key: 'x',        max: 160 },
-    { id: 'linkedinText', key: 'linkedin',  max: 220 },
-    { id: 'githubText',   key: 'github',    max: 160 },
-    { id: 'wantedlyText', key: 'wantedly',  max: 500 },
-  ].forEach(({ id, key, max }) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.value = profiles[key].slice(0, max);
-    updateCharCount(el, max);
-  });
+function renderDailyInput(result) {
+  const el = document.getElementById('dailyContent');
+  if (!el) return;
+  const learning = Array.isArray(result.learning) ? result.learning : [];
+  const action   = Array.isArray(result.action)   ? result.action   : [];
+  el.innerHTML = `
+    <div class="daily-theme">
+      <span class="daily-theme-label">今日のテーマ</span>
+      <p class="daily-theme-text">${escHtml(result.theme || '')}</p>
+    </div>
+    <div class="daily-grid">
+      <div class="daily-block">
+        <h4 class="daily-block-title">📚 インプット</h4>
+        <ul class="daily-list">${learning.map(i => `<li>${escHtml(i)}</li>`).join('')}</ul>
+      </div>
+      <div class="daily-block">
+        <h4 class="daily-block-title">⚡ アクション</h4>
+        <ul class="daily-list">${action.map(i => `<li>${escHtml(i)}</li>`).join('')}</ul>
+      </div>
+    </div>
+    <div class="daily-message">
+      <span class="daily-message-icon">💬</span>
+      <p class="daily-message-text">${escHtml(result.message || '')}</p>
+    </div>`;
 }
 
 function updateCharCount(textarea, max) {
@@ -603,16 +681,13 @@ async function init() {
   });
 
   // Brand statement + pitch
-  document.getElementById('genStatementBtn').addEventListener('click', () => {
-    generateStatement();
-    showToast('ブランドステートメントを生成しました');
-  });
+  document.getElementById('genStatementBtn').addEventListener('click', generateStatement);
 
   // SNS profiles
-  document.getElementById('genSnsBtn').addEventListener('click', () => {
-    generateSnsProfiles();
-    showToast('SNSプロフィールを生成しました');
-  });
+  document.getElementById('genSnsBtn').addEventListener('click', generateSnsProfiles);
+
+  // Today's input (daily)
+  document.getElementById('genDailyBtn').addEventListener('click', generateDailyInput);
 
   // Rec sub-tabs
   document.querySelectorAll('.rec-tab').forEach(btn => {
