@@ -55,6 +55,7 @@ function buildDailyPrompt(p: Record<string, string>, t: Record<string, string>):
 目標: ${t.targetRole || ''}
 達成期間: ${t.timeline || ''}
 モチベーション: ${t.motivation || ''}
+今感じている不足・課題: ${p.lacks || '未入力'}
 
 必ず以下のJSON形式のみで返してください:
 {"theme":"今日のフォーカステーマ（20文字以内）","learning":["インプット項目1（40文字以内）","インプット項目2（40文字以内）","インプット項目3（40文字以内）"],"action":["実践アクション1（30文字以内）","実践アクション2（30文字以内）"],"message":"なりたい人物像に向けた今日の一言（60文字以内）"}`

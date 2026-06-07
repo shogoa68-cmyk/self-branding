@@ -21,7 +21,7 @@ const PLATFORMS = {
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let state = {
-  profile:        { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '' },
+  profile:        { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '', lacks: '' },
   target:         { targetRole: '', targetGoals: '', timeline: '', motivation: '' },
   queries:        null,
   checklist:      {},
@@ -69,6 +69,7 @@ async function loadProfile() {
     career:     data.career     || '',
     skills:     data.skills     || '',
     hobbies:    data.hobbies    || '',
+    lacks:      data.lacks      || '',
   };
   state.target = {
     targetRole:  data.target_role  || '',
@@ -96,6 +97,7 @@ async function flushProfileSave() {
     career:       state.profile.career,
     skills:       state.profile.skills,
     hobbies:      state.profile.hobbies,
+    lacks:        state.profile.lacks,
     target_role:  state.target.targetRole,
     target_goals: state.target.targetGoals,
     timeline:     state.target.timeline,

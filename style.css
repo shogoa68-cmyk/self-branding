@@ -235,6 +235,7 @@ body {
 }
 .badge-current { background: var(--primary-light); color: var(--primary); }
 .badge-target  { background: var(--accent-light);  color: var(--accent); }
+.badge-lacks   { background: #FEF3C7;              color: #D97706; }
 
 .section-desc { color: var(--text-2); font-size: 13px; }
 
