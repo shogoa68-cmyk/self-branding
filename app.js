@@ -25,6 +25,7 @@ let state = {
   profile:          { age: '', gender: '', profession: '', career: '', skills: '', hobbies: '', lacks: '' },
   target:           { targetRole: '', targetGoals: '', timeline: '', motivation: '' },
   notion:           { token: '', dbId: '' },
+  sources:          [],  // [{ id, name, url, desc }]
   queries:          null,
   checklist:        {},
   dailySuggestions: [],  // 今日の提案配列
@@ -91,6 +92,7 @@ async function loadProfile() {
     token: data.notion_token || '',
     dbId:  data.notion_db_id || '',
   };
+  state.sources   = data.sources   || [];
   state.checklist = data.checklist || {};
 }
 
@@ -114,6 +116,7 @@ async function flushProfileSave() {
     lacks:        state.profile.lacks,
     notion_token: state.notion.token,
     notion_db_id: state.notion.dbId,
+    sources:      state.sources,
     target_role:  state.target.targetRole,
     target_goals: state.target.targetGoals,
     timeline:     state.target.timeline,
@@ -260,6 +263,7 @@ async function onSignedIn(user) {
   showApp(user);
   initForms();
   initChecklist();
+  renderSourceManager();
   bindCopyBtns();
   renderHub();
   upsertTodayLog();
@@ -498,7 +502,7 @@ async function generateDailyInput() {
       return c?.theme ? [c.theme] : [];
     });
 
-    const result = await callGenerate('daily', { recentThemes });
+    const result = await callGenerate('daily', { recentThemes, sources: state.sources });
     result.generated_at = new Date().toISOString();
 
     state.dailySuggestions.push(result);
@@ -585,6 +589,52 @@ async function toggleDailyItem(key) {
     },
     { onConflict: 'user_id,date' }
   );
+}
+
+// ─── Source Manager ───────────────────────────────────────────────────────────
+function renderSourceManager() {
+  const el = document.getElementById('sourceManager');
+  if (!el) return;
+
+  const listHtml = state.sources.length
+    ? state.sources.map(s => `
+        <div class="source-item">
+          <div class="source-item-info">
+            <span class="source-item-name">${escHtml(s.name)}</span>
+            ${s.url ? `<a class="source-item-url" href="${escAttr(s.url)}" target="_blank" rel="noopener noreferrer">${escHtml(s.url.replace(/^https?:\/\//, '').replace(/\/$/, ''))}</a>` : ''}
+            ${s.desc ? `<span class="source-item-desc">${escHtml(s.desc)}</span>` : ''}
+          </div>
+          <button class="btn-source-del" data-id="${escAttr(s.id)}" aria-label="削除">✕</button>
+        </div>`).join('')
+    : '<p class="source-empty-msg">まだ登録されていません。よく参照するサイトやメディアを追加してください。</p>';
+
+  el.innerHTML = `
+    <div class="source-list">${listHtml}</div>
+    <div class="source-add-form">
+      <input type="text" class="source-input" id="sourceNameInput" placeholder="ソース名（例: Hacker News、海外TechブログのRSS）">
+      <input type="text" class="source-input" id="sourceUrlInput" placeholder="URL（任意）">
+      <input type="text" class="source-input" id="sourceDescInput" placeholder="メモ（任意、例: テックニュース・毎朝チェック）">
+      <button class="btn-source-add" id="sourceAddBtn">+ 追加</button>
+    </div>`;
+
+  el.querySelectorAll('.btn-source-del').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.sources = state.sources.filter(s => s.id !== btn.dataset.id);
+      scheduleProfileSave();
+      renderSourceManager();
+    });
+  });
+
+  document.getElementById('sourceAddBtn').addEventListener('click', () => {
+    const nameEl = document.getElementById('sourceNameInput');
+    const urlEl  = document.getElementById('sourceUrlInput');
+    const descEl = document.getElementById('sourceDescInput');
+    const name   = nameEl.value.trim();
+    if (!name) { showToast('ソース名を入力してください'); nameEl.focus(); return; }
+    state.sources.push({ id: Date.now().toString(), name, url: urlEl.value.trim(), desc: descEl.value.trim() });
+    scheduleProfileSave();
+    renderSourceManager();
+  });
 }
 
 // ─── Notion ───────────────────────────────────────────────────────────────────
@@ -856,6 +906,13 @@ function renderDailyInput(result) {
       <span class="daily-message-icon">💬</span>
       <p class="daily-message-text">${escHtml(result.message || '')}</p>
     </div>
+    ${state.sources.length ? `<div class="daily-sources-row">
+      <span class="daily-sources-label">🔗 登録ソース</span>
+      <div class="daily-source-chips">${state.sources.map(s => s.url
+        ? `<a class="daily-source-chip" href="${escAttr(s.url)}" target="_blank" rel="noopener noreferrer">${escHtml(s.name)}</a>`
+        : `<span class="daily-source-chip no-link">${escHtml(s.name)}</span>`
+      ).join('')}</div>
+    </div>` : ''}
     <div class="notion-save-row">
       <button class="btn-notion-save" id="notionSaveBtn" ${state.notion.token && state.notion.dbId ? '' : 'disabled'}>
         📓 Notionに保存
