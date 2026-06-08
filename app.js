@@ -126,6 +126,8 @@ async function flushProfileSave() {
   });
   if (error) {
     console.error('save error:', error);
+    setSaveStatus('');
+    showToast('保存に失敗しました。コンソールを確認してください。');
   } else {
     setSaveStatus('saved');
     upsertTodayLog();
