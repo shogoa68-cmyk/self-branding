@@ -363,6 +363,19 @@
 
     <div class="toast" id="toast"></div>
 
+    <!-- ── Note Modal (bottom sheet) ── -->
+    <div id="noteModal" class="note-modal" hidden>
+      <div class="note-modal-backdrop" id="noteModalBackdrop"></div>
+      <div class="note-modal-sheet">
+        <div class="note-modal-head">
+          <p class="note-modal-task" id="noteModalTask"></p>
+          <button class="note-modal-close" id="noteModalClose" aria-label="閉じる">✕</button>
+        </div>
+        <textarea class="note-modal-textarea" id="noteModalTextarea" placeholder="メモを入力..."></textarea>
+        <button class="btn-note-save" id="noteModalSave">保存して閉じる</button>
+      </div>
+    </div>
+
   </div><!-- /#appMain -->
 
   <script src="app.js"></script>

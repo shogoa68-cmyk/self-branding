@@ -543,6 +543,7 @@ function renderSuggestionTabs() {
 }
 
 function setActiveSuggestion(idx) {
+  closeNoteModal();
   state.dailyActiveIdx = idx;
   state.noteExpanded   = new Set();
   const titleEl = document.getElementById('dailySectionTitle');
@@ -587,6 +588,38 @@ async function toggleDailyItem(key) {
       completed_actions: [...state.dailyCompleted],
       notes:             state.dailyNotes,
     },
+    { onConflict: 'user_id,date' }
+  );
+}
+
+// ─── Note Modal ──────────────────────────────────────────────────────────────
+let activeNoteKey = null;
+
+function openNoteModal(key, taskText) {
+  activeNoteKey = key;
+  document.getElementById('noteModalTask').textContent = taskText;
+  document.getElementById('noteModalTextarea').value = state.dailyNotes[scopedKey(key)] || '';
+  document.getElementById('noteModal').hidden = false;
+  setTimeout(() => document.getElementById('noteModalTextarea').focus(), 50);
+}
+
+function closeNoteModal() {
+  if (activeNoteKey === null) return;
+  const val = document.getElementById('noteModalTextarea').value;
+  state.dailyNotes[scopedKey(activeNoteKey)] = val;
+  // ボタンのアクティブ状態を更新
+  const btn = document.querySelector(`.note-toggle-btn[data-key="${CSS.escape(activeNoteKey)}"]`);
+  if (btn) btn.classList.toggle('active', val.trim().length > 0);
+  document.getElementById('noteModal').hidden = true;
+  activeNoteKey = null;
+  saveNotesToDB();
+}
+
+async function saveNotesToDB() {
+  if (!currentUser) return;
+  const today = new Date().toISOString().split('T')[0];
+  await sb.from('daily_logs').upsert(
+    { user_id: currentUser.id, date: today, notes: state.dailyNotes },
     { onConflict: 'user_id,date' }
   );
 }
@@ -842,27 +875,22 @@ function renderLogDetail(log, dateStr) {
 }
 
 function renderDailyItem(text, key, extraLinks = []) {
-  const done     = state.dailyCompleted.has(scopedKey(key));
-  const expanded = state.noteExpanded.has(key);
-  const note     = state.dailyNotes[scopedKey(key)] || '';
-  const gUrl     = PLATFORMS.google.url(text);
-  const links    = [
+  const done    = state.dailyCompleted.has(scopedKey(key));
+  const hasNote = !!(state.dailyNotes[scopedKey(key)]?.trim());
+  const gUrl    = PLATFORMS.google.url(text);
+  const links   = [
     `<a class="daily-task-link" href="${gUrl}" target="_blank" rel="noopener noreferrer"><span class="task-link-dot" style="background:#4285F4"></span>Google</a>`,
     ...extraLinks,
   ].join('');
-  const noteArea = expanded
-    ? `<textarea class="note-textarea" data-key="${escAttr(key)}" placeholder="メモを入力..." rows="2">${escHtml(note)}</textarea>`
-    : '';
   return `
     <li class="daily-task-item${done ? ' done' : ''}">
       <button class="daily-task-check" data-key="${escAttr(key)}" aria-pressed="${done}">${done ? '✓' : ''}</button>
       <div class="daily-task-body">
         <div class="daily-task-row">
           <span class="daily-task-text">${escHtml(text)}</span>
-          <button class="note-toggle-btn${expanded ? ' active' : ''}" data-key="${escAttr(key)}" title="メモ">📝</button>
+          <button class="note-toggle-btn${hasNote ? ' active' : ''}" data-key="${escAttr(key)}" data-text="${escAttr(text)}" title="メモ">📝</button>
         </div>
         <div class="daily-task-links">${links}</div>
-        ${noteArea}
       </div>
     </li>`;
 }
@@ -1128,6 +1156,11 @@ async function init() {
     showToast('クエリを再生成しました');
   });
 
+  // Note modal
+  document.getElementById('noteModalClose').addEventListener('click', closeNoteModal);
+  document.getElementById('noteModalBackdrop').addEventListener('click', closeNoteModal);
+  document.getElementById('noteModalSave').addEventListener('click', closeNoteModal);
+
   // Brand statement + pitch
   document.getElementById('genStatementBtn').addEventListener('click', generateStatement);
 
@@ -1160,33 +1193,9 @@ async function init() {
 
     const noteBtn = e.target.closest('.note-toggle-btn');
     if (noteBtn) {
-      const key      = noteBtn.dataset.key;
-      const taskBody = noteBtn.closest('.daily-task-body');
-      const existing = taskBody.querySelector('.note-textarea');
-      if (existing) {
-        state.dailyNotes[scopedKey(key)] = existing.value;
-        state.noteExpanded.delete(key);
-        existing.remove();
-        noteBtn.classList.remove('active');
-      } else {
-        const ta = document.createElement('textarea');
-        ta.className   = 'note-textarea';
-        ta.dataset.key = key;
-        ta.placeholder = 'メモを入力...';
-        ta.rows        = 2;
-        ta.value       = state.dailyNotes[scopedKey(key)] || '';
-        taskBody.appendChild(ta);
-        state.noteExpanded.add(key);
-        noteBtn.classList.add('active');
-        ta.focus();
-      }
+      openNoteModal(noteBtn.dataset.key, noteBtn.dataset.text);
+      return;
     }
-  });
-
-  // Note textarea input (save to state without re-render)
-  document.getElementById('dailyContent').addEventListener('input', e => {
-    const ta = e.target.closest('.note-textarea');
-    if (ta) state.dailyNotes[scopedKey(ta.dataset.key)] = ta.value;
   });
 
   // Suggestion tabs click (multiple suggestions per day)
