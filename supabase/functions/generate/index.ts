@@ -42,7 +42,17 @@ function buildSnsPrompt(p: Record<string, string>, t: Record<string, string>): s
 {"x":"X(Twitter)プロフィール（160文字以内）","linkedin":"LinkedInヘッドライン（220文字以内、プロフェッショナルなトーン）","github":"GitHubプロフィール（160文字以内）","wantedly":"Wantedlyプロフィール（500文字以内、人柄が伝わる温かみのある文章）"}`
 }
 
-function buildDailyPrompt(p: Record<string, string>, t: Record<string, string>, recentThemes: string[] = [], sources: Array<{name: string, url?: string, desc?: string}> = []): string {
+function buildExtractPrompt(noteText: string): string {
+  return `以下のメモから、深掘りする価値のある人物名・キーワード・概念・書籍・ツール名を最大8個抽出してください。
+
+メモ:
+${noteText}
+
+必ず以下のJSON形式のみで返してください（typeは person/keyword/book/tool のいずれか）:
+{"items":[{"type":"person","label":"名前"},{"type":"keyword","label":"キーワード"}]}`
+}
+
+function buildDailyPrompt(p: Record<string, string>, t: Record<string, string>, recentThemes: string[] = [], sources: Array<{name: string, url?: string, desc?: string}> = [], focusKeyword = ''): string {
   const today = new Date().toLocaleDateString('ja-JP', {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
     timeZone: 'Asia/Tokyo',
@@ -53,6 +63,9 @@ function buildDailyPrompt(p: Record<string, string>, t: Record<string, string>, 
   const sourcesSection = sources.length
     ? `\n【ユーザーが日常的に参照している情報ソース】\nこれらのソースに関連したテーマ・具体的なコンテンツを今日の提案に反映してください:\n${sources.map(s => `・${s.name}${s.url ? ` (${s.url})` : ''}${s.desc ? ` ※${s.desc}` : ''}`).join('\n')}\n`
     : ''
+  const focusSection = focusKeyword
+    ? `\n【今日の重点テーマ（必須）】\n「${focusKeyword}」を中心としたインプット・アクションを提案してください。このテーマから外れないこと。\n`
+    : ''
   return `あなたは${t.targetRole || '理想の人物像'}を目指す${p.profession || 'ユーザー'}のパーソナルコーチです。
 今日（${today}）のインプット・行動提案を作成してください。
 
@@ -62,7 +75,7 @@ function buildDailyPrompt(p: Record<string, string>, t: Record<string, string>, 
 達成期間: ${t.timeline || ''}
 モチベーション: ${t.motivation || ''}
 今感じている不足・課題: ${p.lacks || '未入力'}
-${avoidSection}${sourcesSection}
+${avoidSection}${sourcesSection}${focusSection}
 必ず以下のJSON形式のみで返してください:
 {"theme":"今日のフォーカステーマ（20文字以内）","learning":["インプット項目1（40文字以内）","インプット項目2（40文字以内）","インプット項目3（40文字以内）"],"action":["実践アクション1（30文字以内）","実践アクション2（30文字以内）"],"message":"なりたい人物像に向けた今日の一言（60文字以内）"}`
 }
@@ -95,12 +108,13 @@ serve(async (req) => {
     }
 
     // リクエスト内容を取得
-    const { type, profile, target, recentThemes, sources } = await req.json()
+    const { type, profile, target, recentThemes, sources, noteText, focusKeyword } = await req.json()
 
     let prompt = ''
-    if      (type === 'statement') prompt = buildStatementPrompt(profile, target)
+    if      (type === 'extract')   prompt = buildExtractPrompt(noteText ?? '')
+    else if (type === 'statement') prompt = buildStatementPrompt(profile, target)
     else if (type === 'sns')       prompt = buildSnsPrompt(profile, target)
-    else if (type === 'daily')     prompt = buildDailyPrompt(profile, target, recentThemes ?? [], sources ?? [])
+    else if (type === 'daily')     prompt = buildDailyPrompt(profile, target, recentThemes ?? [], sources ?? [], focusKeyword ?? '')
     else return new Response(JSON.stringify({ error: 'Invalid type' }), {
       status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
     })

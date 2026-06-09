@@ -371,8 +371,21 @@
           <p class="note-modal-task" id="noteModalTask"></p>
           <button class="note-modal-close" id="noteModalClose" aria-label="閉じる">✕</button>
         </div>
-        <textarea class="note-modal-textarea" id="noteModalTextarea" placeholder="メモを入力..."></textarea>
-        <button class="btn-note-save" id="noteModalSave">保存して閉じる</button>
+        <!-- ペイン1: メモ入力 -->
+        <div id="noteInputArea">
+          <textarea class="note-modal-textarea" id="noteModalTextarea" placeholder="メモを入力..."></textarea>
+          <div class="note-modal-actions">
+            <button class="btn-note-extract" id="noteExtractBtn">🔍 深掘り</button>
+            <button class="btn-note-save" id="noteModalSave">保存して閉じる</button>
+          </div>
+        </div>
+        <!-- ペイン2: キーワード抽出 -->
+        <div id="noteExtractPanel" class="note-extract-panel" hidden>
+          <p class="extract-note-preview" id="extractNotePreview"></p>
+          <div class="extract-chips" id="extractChips"></div>
+          <div class="extract-search-panel" id="extractSearchPanel" hidden></div>
+          <button class="extract-back-btn" id="extractBackBtn">← メモに戻る</button>
+        </div>
       </div>
     </div>
 
