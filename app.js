@@ -1,5 +1,12 @@
 'use strict';
 
+// ─── Timezone helper (JST = UTC+9) ───────────────────────────────────────────
+// sv-SE locale uses YYYY-MM-DD format, making it convenient for ISO date strings
+const todayJST = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+function dateJST(dateObj) {
+  return dateObj.toLocaleDateString('sv-SE', { timeZone: 'Asia/Tokyo' });
+}
+
 // ─── Supabase ─────────────────────────────────────────────────────────────────
 const SUPABASE_URL      = 'https://vfgzvbhusyxzmefugsdw.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZmZ3p2Ymh1c3l4em1lZnVnc2R3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3NzA1MTQsImV4cCI6MjA5NjM0NjUxNH0.85MvRWCTkZqRXzllDwOZKIs253_XlTIkT-7xgBukDeE';
@@ -137,7 +144,7 @@ async function flushProfileSave() {
 // ─── Daily Log / Progress ─────────────────────────────────────────────────────
 async function upsertTodayLog() {
   if (!currentUser) return;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayJST();
   // ignoreDuplicates: row は streak カウント用の存在確認のみ。completed_actions は上書きしない
   await sb.from('daily_logs').upsert(
     { user_id: currentUser.id, date: today },
@@ -147,7 +154,7 @@ async function upsertTodayLog() {
 
 async function loadTodayLog() {
   if (!currentUser) return;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayJST();
   const { data } = await sb
     .from('daily_logs')
     .select('content, completed_actions, notes')
@@ -186,11 +193,10 @@ async function loadStreak() {
   if (!data || data.length === 0) return 0;
 
   const dates = new Set(data.map(d => d.date));
-  const cur = new Date();
-  cur.setHours(0, 0, 0, 0);
   let streak = 0;
+  const cur = new Date();
   while (true) {
-    const ds = cur.toISOString().split('T')[0];
+    const ds = dateJST(cur);
     if (dates.has(ds)) { streak++; cur.setDate(cur.getDate() - 1); }
     else break;
   }
@@ -199,19 +205,17 @@ async function loadStreak() {
 
 async function loadWeekActivity() {
   if (!currentUser) return [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const todayStr = todayJST();
   const dates = [];
   for (let i = 6; i >= 0; i--) {
-    const d = new Date(today);
+    const d = new Date();
     d.setDate(d.getDate() - i);
-    dates.push(d.toISOString().split('T')[0]);
+    dates.push(dateJST(d));
   }
   const { data } = await sb
     .from('daily_logs').select('date')
     .eq('user_id', currentUser.id).in('date', dates);
   const active = new Set((data || []).map(d => d.date));
-  const todayStr = today.toISOString().split('T')[0];
   return dates.map(d => ({ date: d, active: active.has(d), isToday: d === todayStr }));
 }
 
@@ -487,7 +491,7 @@ async function generateSnsProfiles() {
 }
 
 // ─── Daily input generation ───────────────────────────────────────────────────
-async function generateDailyInput() {
+async function generateDailyInput(focusKeyword = '') {
   const btn = document.getElementById('genDailyBtn');
   setButtonLoading(btn, true);
   try {
@@ -504,7 +508,9 @@ async function generateDailyInput() {
       return c?.theme ? [c.theme] : [];
     });
 
-    const result = await callGenerate('daily', { recentThemes, sources: state.sources });
+    const extra = { recentThemes, sources: state.sources };
+    if (focusKeyword) extra.focusKeyword = focusKeyword;
+    const result = await callGenerate('daily', extra);
     result.generated_at = new Date().toISOString();
 
     state.dailySuggestions.push(result);
@@ -515,7 +521,7 @@ async function generateDailyInput() {
     renderSuggestionTabs();
     renderDailyInput(result);
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayJST();
     await sb.from('daily_logs').upsert(
       {
         user_id:           currentUser.id,
@@ -582,7 +588,7 @@ async function toggleDailyItem(key) {
     if (lbl)  lbl.textContent   = `${cnt} / ${total} 完了`;
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayJST();
   await sb.from('daily_logs').upsert(
     {
       user_id:           currentUser.id,
@@ -592,6 +598,70 @@ async function toggleDailyItem(key) {
     },
     { onConflict: 'user_id,date' }
   );
+}
+
+// ─── Deep Dive (keyword extraction) ──────────────────────────────────────────
+async function extractNoteKeywords(noteText) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+  const res = await fetch(EDGE_FN_URL, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'extract', noteText }),
+  });
+  if (!res.ok) throw new Error('抽出に失敗しました');
+  const data = await res.json();
+  return data.result?.items || [];
+}
+
+const TYPE_ICON = { person: '👤', keyword: '🔑', book: '📖', tool: '🛠️' };
+
+function renderExtractedKeywords(items) {
+  const chips = document.getElementById('extractChips');
+  chips.innerHTML = items.map((item, i) =>
+    `<button class="extract-chip" data-idx="${i}" data-label="${escAttr(item.label)}" data-type="${escAttr(item.type || 'keyword')}">
+      ${TYPE_ICON[item.type] || '🔍'} ${escHtml(item.label)}
+    </button>`
+  ).join('');
+
+  document.getElementById('extractSearchPanel').hidden = true;
+
+  chips.querySelectorAll('.extract-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      chips.querySelectorAll('.extract-chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      renderKeywordSearchPanel(chip.dataset.label);
+    });
+  });
+}
+
+function renderKeywordSearchPanel(keyword) {
+  const panel = document.getElementById('extractSearchPanel');
+  const searchLinks = [
+    { platform: 'google',  color: '#4285F4' },
+    { platform: 'youtube', color: '#FF0000' },
+    { platform: 'amazon',  color: '#FF9900' },
+    { platform: 'x',       color: '#000' },
+  ].map(({ platform, color }) => {
+    const p = PLATFORMS[platform];
+    return `<a class="extract-search-link" href="${escAttr(p.url(keyword))}" target="_blank" rel="noopener noreferrer">
+      <span class="task-link-dot" style="background:${color}"></span>${escHtml(p.label)}
+    </a>`;
+  }).join('');
+
+  panel.innerHTML = `
+    <div class="extract-search-head">「${escHtml(keyword)}」を調べる</div>
+    <div class="extract-search-links">${searchLinks}</div>
+    <button class="btn-focus-generate" data-keyword="${escAttr(keyword)}">
+      ✦ このテーマで今日の提案を生成
+    </button>`;
+  panel.hidden = false;
+
+  panel.querySelector('.btn-focus-generate').addEventListener('click', async () => {
+    const kw = panel.querySelector('.btn-focus-generate').dataset.keyword;
+    closeNoteModal();
+    await generateDailyInput(kw);
+  });
 }
 
 // ─── Note Modal ──────────────────────────────────────────────────────────────
@@ -609,9 +679,12 @@ function closeNoteModal() {
   if (activeNoteKey === null) return;
   const val = document.getElementById('noteModalTextarea').value;
   state.dailyNotes[scopedKey(activeNoteKey)] = val;
-  // ボタンのアクティブ状態を更新
   const btn = document.querySelector(`.note-toggle-btn[data-key="${CSS.escape(activeNoteKey)}"]`);
   if (btn) btn.classList.toggle('active', val.trim().length > 0);
+  // パネルをリセット
+  document.getElementById('noteInputArea').hidden     = false;
+  document.getElementById('noteExtractPanel').hidden  = true;
+  document.getElementById('extractSearchPanel').hidden = true;
   document.getElementById('noteModal').hidden = true;
   activeNoteKey = null;
   saveNotesToDB();
@@ -619,7 +692,7 @@ function closeNoteModal() {
 
 async function saveNotesToDB() {
   if (!currentUser) return;
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayJST();
   await sb.from('daily_logs').upsert(
     { user_id: currentUser.id, date: today, notes: state.dailyNotes },
     { onConflict: 'user_id,date' }
@@ -687,7 +760,7 @@ async function saveToNotion() {
   setButtonLoading(btn, true, '保存中...');
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayJST();
     const pfx = `${state.dailyActiveIdx}_`;
     const unscopedCompleted = [...state.dailyCompleted]
       .filter(k => k.startsWith(pfx))
@@ -739,7 +812,7 @@ async function loadAndRenderCalendar() {
 async function loadMonthLogs(year, month) {
   if (!currentUser) return [];
   const from = `${year}-${String(month + 1).padStart(2, '0')}-01`;
-  const to   = new Date(year, month + 1, 0).toISOString().split('T')[0];
+  const to   = dateJST(new Date(year, month + 1, 0));
   const { data } = await sb
     .from('daily_logs')
     .select('date, content, completed_actions')
@@ -759,7 +832,7 @@ function renderCalendar(year, month, logs) {
   const logMap  = new Map(logs.map(l => [l.date, l]));
   const firstDow = new Date(year, month, 1).getDay();
   const lastDate = new Date(year, month + 1, 0).getDate();
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = todayJST();
 
   let html = '';
   for (let i = 0; i < firstDow; i++) html += `<div class="cal-cell cal-empty"></div>`;
@@ -1163,6 +1236,33 @@ async function init() {
   document.getElementById('noteModalBackdrop').addEventListener('click', closeNoteModal);
   document.getElementById('noteModalSave').addEventListener('click', closeNoteModal);
 
+  // Deep dive: extract keywords from note
+  document.getElementById('noteExtractBtn').addEventListener('click', async () => {
+    const noteText = document.getElementById('noteModalTextarea').value.trim();
+    if (!noteText) { showToast('メモを入力してから深掘りしてください'); return; }
+    document.getElementById('extractNotePreview').textContent = noteText;
+    document.getElementById('extractChips').innerHTML = '<span style="color:var(--text-2);font-size:13px">抽出中...</span>';
+    document.getElementById('noteInputArea').hidden = true;
+    document.getElementById('noteExtractPanel').hidden = false;
+    try {
+      const items = await extractNoteKeywords(noteText);
+      if (items.length === 0) {
+        document.getElementById('extractChips').innerHTML = '<span style="color:var(--text-2);font-size:13px">キーワードが見つかりませんでした</span>';
+      } else {
+        renderExtractedKeywords(items);
+      }
+    } catch {
+      document.getElementById('extractChips').innerHTML = '<span style="color:var(--danger);font-size:13px">抽出に失敗しました</span>';
+    }
+  });
+
+  // Deep dive: back to note input
+  document.getElementById('extractBackBtn').addEventListener('click', () => {
+    document.getElementById('noteExtractPanel').hidden = true;
+    document.getElementById('extractSearchPanel').hidden = true;
+    document.getElementById('noteInputArea').hidden = false;
+  });
+
   // Brand statement + pitch
   document.getElementById('genStatementBtn').addEventListener('click', generateStatement);
 
@@ -1170,7 +1270,7 @@ async function init() {
   document.getElementById('genSnsBtn').addEventListener('click', generateSnsProfiles);
 
   // Today's input (daily)
-  document.getElementById('genDailyBtn').addEventListener('click', generateDailyInput);
+  document.getElementById('genDailyBtn').addEventListener('click', () => generateDailyInput());
 
   // Calendar navigation
   document.getElementById('calPrev').addEventListener('click', async () => {
