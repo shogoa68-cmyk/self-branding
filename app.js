@@ -609,8 +609,13 @@ async function extractNoteKeywords(noteText) {
     headers: { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ type: 'extract', noteText }),
   });
-  if (!res.ok) throw new Error('抽出に失敗しました');
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    console.error('extract API error', res.status, errText);
+    throw new Error(`HTTP ${res.status}: ${errText}`);
+  }
   const data = await res.json();
+  console.log('extract result:', data);
   return data.result?.items || [];
 }
 
@@ -1251,8 +1256,9 @@ async function init() {
       } else {
         renderExtractedKeywords(items);
       }
-    } catch {
-      document.getElementById('extractChips').innerHTML = '<span style="color:var(--danger);font-size:13px">抽出に失敗しました</span>';
+    } catch (err) {
+      console.error('deep dive extract error:', err);
+      document.getElementById('extractChips').innerHTML = `<span style="color:var(--danger);font-size:13px">抽出に失敗しました（詳細はコンソール参照）</span>`;
     }
   });
 
