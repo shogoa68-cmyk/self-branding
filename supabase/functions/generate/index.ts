@@ -52,11 +52,20 @@ ${noteText}
 {"items":[{"type":"person","label":"名前"},{"type":"keyword","label":"キーワード"}]}`
 }
 
-function buildDailyPrompt(p: Record<string, string>, t: Record<string, string>, recentThemes: string[] = [], sources: Array<{name: string, url?: string, desc?: string}> = [], focusKeyword = ''): string {
+const BALANCE_COUNTS: Record<string, [number, number]> = {
+  input:    [5, 1],
+  balanced: [3, 2],
+  action:   [2, 3],
+}
+
+function buildDailyPrompt(p: Record<string, string>, t: Record<string, string>, recentThemes: string[] = [], sources: Array<{name: string, url?: string, desc?: string}> = [], focusKeyword = '', balance = 'balanced'): string {
   const today = new Date().toLocaleDateString('ja-JP', {
     year: 'numeric', month: 'long', day: 'numeric', weekday: 'long',
     timeZone: 'Asia/Tokyo',
   })
+  const [lCount, aCount] = BALANCE_COUNTS[balance] ?? [3, 2]
+  const learningItems = Array.from({length: lCount}, (_, i) => `"インプット項目${i+1}（40文字以内）"`).join(',')
+  const actionItems   = Array.from({length: aCount}, (_, i) => `"実践アクション${i+1}（30文字以内）"`).join(',')
   const avoidSection = recentThemes.length
     ? `\n【重複禁止】以下は過去に提案済みのテーマです。同じまたは類似したテーマ・内容は避けてください:\n${recentThemes.map(th => `・${th}`).join('\n')}\n`
     : ''
@@ -66,8 +75,13 @@ function buildDailyPrompt(p: Record<string, string>, t: Record<string, string>, 
   const focusSection = focusKeyword
     ? `\n【今日の重点テーマ（必須）】\n「${focusKeyword}」を中心としたインプット・アクションを提案してください。このテーマから外れないこと。\n`
     : ''
+  const balanceNote = balance === 'input'
+    ? `インプット${lCount}件・アクション${aCount}件と、学習を多めに提案してください。`
+    : balance === 'action'
+    ? `アクション${aCount}件・インプット${lCount}件と、実践を多めに提案してください。`
+    : `インプット${lCount}件・アクション${aCount}件をバランスよく提案してください。`
   return `あなたは${t.targetRole || '理想の人物像'}を目指す${p.profession || 'ユーザー'}のパーソナルコーチです。
-今日（${today}）のインプット・行動提案を作成してください。
+今日（${today}）のインプット・行動提案を作成してください。${balanceNote}
 
 【ユーザープロフィール】
 現在: ${p.profession || ''}（スキル: ${p.skills || ''}）
@@ -77,7 +91,7 @@ function buildDailyPrompt(p: Record<string, string>, t: Record<string, string>, 
 今感じている不足・課題: ${p.lacks || '未入力'}
 ${avoidSection}${sourcesSection}${focusSection}
 必ず以下のJSON形式のみで返してください:
-{"theme":"今日のフォーカステーマ（20文字以内）","learning":["インプット項目1（40文字以内）","インプット項目2（40文字以内）","インプット項目3（40文字以内）"],"action":["実践アクション1（30文字以内）","実践アクション2（30文字以内）"],"message":"なりたい人物像に向けた今日の一言（60文字以内）"}`
+{"theme":"今日のフォーカステーマ（20文字以内）","learning":[${learningItems}],"action":[${actionItems}],"message":"なりたい人物像に向けた今日の一言（60文字以内）"}`
 }
 
 serve(async (req) => {
@@ -108,13 +122,13 @@ serve(async (req) => {
     }
 
     // リクエスト内容を取得
-    const { type, profile, target, recentThemes, sources, noteText, focusKeyword } = await req.json()
+    const { type, profile, target, recentThemes, sources, noteText, focusKeyword, balance } = await req.json()
 
     let prompt = ''
     if      (type === 'extract')   prompt = buildExtractPrompt(noteText ?? '')
     else if (type === 'statement') prompt = buildStatementPrompt(profile, target)
     else if (type === 'sns')       prompt = buildSnsPrompt(profile, target)
-    else if (type === 'daily')     prompt = buildDailyPrompt(profile, target, recentThemes ?? [], sources ?? [], focusKeyword ?? '')
+    else if (type === 'daily')     prompt = buildDailyPrompt(profile, target, recentThemes ?? [], sources ?? [], focusKeyword ?? '', balance ?? 'balanced')
     else return new Response(JSON.stringify({ error: 'Invalid type' }), {
       status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
     })

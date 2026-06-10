@@ -40,7 +40,10 @@ let state = {
   dailyCompleted:   new Set(),  // "{idx}_learning_0" 形式
   dailyNotes:       {},         // "{idx}_learning_0": "note" 形式
   noteExpanded:     new Set(),  // short key のみ（UI状態）
+  extractedItems:   {},         // scopedKey → [{type, label}]
 };
+
+let balanceMode = localStorage.getItem('brandme_balance') || 'balanced';
 
 // 現在の提案インデックスを付与したキーを返す
 function scopedKey(shortKey) {
@@ -508,7 +511,7 @@ async function generateDailyInput(focusKeyword = '') {
       return c?.theme ? [c.theme] : [];
     });
 
-    const extra = { recentThemes, sources: state.sources };
+    const extra = { recentThemes, sources: state.sources, balance: balanceMode };
     if (focusKeyword) extra.focusKeyword = focusKeyword;
     const result = await callGenerate('daily', extra);
     result.generated_at = new Date().toISOString();
@@ -680,12 +683,32 @@ function openNoteModal(key, taskText) {
   setTimeout(() => document.getElementById('noteModalTextarea').focus(), 50);
 }
 
+function refreshTaskChips(key) {
+  const skey = scopedKey(key);
+  const chips = state.extractedItems[skey] || [];
+  const taskItem = document.querySelector(`.daily-task-item[data-key="${CSS.escape(key)}"]`);
+  if (!taskItem) return;
+  const body = taskItem.querySelector('.daily-task-body');
+  if (!body) return;
+  let chipsDiv = body.querySelector('.task-extracted-chips');
+  if (chips.length === 0) { chipsDiv?.remove(); return; }
+  if (!chipsDiv) {
+    chipsDiv = document.createElement('div');
+    chipsDiv.className = 'task-extracted-chips';
+    body.appendChild(chipsDiv);
+  }
+  chipsDiv.innerHTML = chips.map(item =>
+    `<a class="task-extract-chip" href="${escAttr(PLATFORMS.google.url(item.label))}" target="_blank" rel="noopener noreferrer">${TYPE_ICON[item.type] || '🔍'} ${escHtml(item.label)}</a>`
+  ).join('');
+}
+
 function closeNoteModal() {
   if (activeNoteKey === null) return;
+  const key = activeNoteKey;
   const val = document.getElementById('noteModalTextarea').value;
-  state.dailyNotes[scopedKey(activeNoteKey)] = val;
-  const btn = document.querySelector(`.note-toggle-btn[data-key="${CSS.escape(activeNoteKey)}"]`);
-  if (btn) btn.classList.toggle('active', val.trim().length > 0);
+  state.dailyNotes[scopedKey(key)] = val;
+  const noteBtn = document.querySelector(`.note-toggle-btn[data-key="${CSS.escape(key)}"]`);
+  if (noteBtn) noteBtn.classList.toggle('active', val.trim().length > 0);
   // パネルをリセット
   document.getElementById('noteInputArea').hidden     = false;
   document.getElementById('noteExtractPanel').hidden  = true;
@@ -693,6 +716,7 @@ function closeNoteModal() {
   document.getElementById('noteModal').hidden = true;
   activeNoteKey = null;
   saveNotesToDB();
+  refreshTaskChips(key);
 }
 
 async function saveNotesToDB() {
@@ -955,15 +979,22 @@ function renderLogDetail(log, dateStr) {
 }
 
 function renderDailyItem(text, key, extraLinks = []) {
-  const done    = state.dailyCompleted.has(scopedKey(key));
-  const hasNote = !!(state.dailyNotes[scopedKey(key)]?.trim());
+  const skey    = scopedKey(key);
+  const done    = state.dailyCompleted.has(skey);
+  const hasNote = !!(state.dailyNotes[skey]?.trim());
+  const chips   = state.extractedItems[skey] || [];
   const gUrl    = PLATFORMS.google.url(text);
   const links   = [
     `<a class="daily-task-link" href="${gUrl}" target="_blank" rel="noopener noreferrer"><span class="task-link-dot" style="background:#4285F4"></span>Google</a>`,
     ...extraLinks,
   ].join('');
+  const chipsHtml = chips.length
+    ? `<div class="task-extracted-chips">${chips.map(item =>
+        `<a class="task-extract-chip" href="${escAttr(PLATFORMS.google.url(item.label))}" target="_blank" rel="noopener noreferrer">${TYPE_ICON[item.type] || '🔍'} ${escHtml(item.label)}</a>`
+      ).join('')}</div>`
+    : '';
   return `
-    <li class="daily-task-item${done ? ' done' : ''}">
+    <li class="daily-task-item${done ? ' done' : ''}" data-key="${escAttr(key)}">
       <button class="daily-task-check" data-key="${escAttr(key)}" aria-pressed="${done}">${done ? '✓' : ''}</button>
       <div class="daily-task-body">
         <div class="daily-task-row">
@@ -971,6 +1002,7 @@ function renderDailyItem(text, key, extraLinks = []) {
           <button class="note-toggle-btn${hasNote ? ' active' : ''}" data-key="${escAttr(key)}" data-text="${escAttr(text)}" title="メモ">📝</button>
         </div>
         <div class="daily-task-links">${links}</div>
+        ${chipsHtml}
       </div>
     </li>`;
 }
@@ -1255,6 +1287,9 @@ async function init() {
         document.getElementById('extractChips').innerHTML = '<span style="color:var(--text-2);font-size:13px">キーワードが見つかりませんでした</span>';
       } else {
         renderExtractedKeywords(items);
+        if (activeNoteKey !== null) {
+          state.extractedItems[scopedKey(activeNoteKey)] = items;
+        }
       }
     } catch (err) {
       console.error('deep dive extract error:', err);
@@ -1274,6 +1309,17 @@ async function init() {
 
   // SNS profiles
   document.getElementById('genSnsBtn').addEventListener('click', generateSnsProfiles);
+
+  // Balance selector
+  document.getElementById('balanceSelector').addEventListener('click', e => {
+    const btn = e.target.closest('.balance-btn');
+    if (!btn) return;
+    balanceMode = btn.dataset.balance;
+    localStorage.setItem('brandme_balance', balanceMode);
+    document.querySelectorAll('.balance-btn').forEach(b => b.classList.toggle('active', b.dataset.balance === balanceMode));
+  });
+  // Restore saved balance state
+  document.querySelectorAll('.balance-btn').forEach(b => b.classList.toggle('active', b.dataset.balance === balanceMode));
 
   // Today's input (daily)
   document.getElementById('genDailyBtn').addEventListener('click', () => generateDailyInput());

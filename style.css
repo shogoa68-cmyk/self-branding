@@ -680,8 +680,33 @@ input:focus, textarea:focus, select:focus {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
   gap: 12px;
+}
+
+/* Balance selector */
+.balance-selector {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.balance-btn {
+  flex: 1;
+  padding: 7px 4px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.balance-btn.active {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  color: var(--primary-dark);
 }
 .daily-section-title {
   font-size: 16px;
@@ -1114,6 +1139,30 @@ input:focus, textarea:focus, select:focus {
   transition: border-color .15s, color .15s;
 }
 .daily-task-link:hover { border-color: var(--primary); color: var(--primary); }
+
+/* Extracted keyword chips on task cards */
+.task-extracted-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 6px;
+}
+.task-extract-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 9px;
+  border-radius: 20px;
+  background: var(--primary-light);
+  color: var(--primary-dark);
+  font-size: 11px;
+  text-decoration: none;
+  border: 1px solid rgba(99,102,241,.25);
+  transition: opacity .15s;
+  white-space: nowrap;
+}
+.task-extract-chip:hover { opacity: .75; }
+
 .task-link-dot {
   width: 8px;
   height: 8px;
