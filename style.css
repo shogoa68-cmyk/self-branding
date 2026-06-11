@@ -988,7 +988,10 @@ input:focus, textarea:focus, select:focus {
   gap: 8px;
 }
 .extract-chip {
-  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px 5px 5px;
   border-radius: 20px;
   border: 1.5px solid var(--border);
   background: var(--card);
@@ -996,12 +999,31 @@ input:focus, textarea:focus, select:focus {
   cursor: pointer;
   transition: all .15s;
   white-space: nowrap;
+  user-select: none;
 }
 .extract-chip.active,
 .extract-chip:hover {
   border-color: var(--primary);
   background: var(--primary-light);
   color: var(--primary-dark);
+}
+.chip-type-btn {
+  background: rgba(0,0,0,.05);
+  border: none;
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s;
+  line-height: 1;
+}
+.chip-type-btn:hover { background: rgba(99,102,241,.2); }
+.chip-label { cursor: pointer; }
 }
 .extract-search-panel {
   background: var(--bg);
@@ -1134,7 +1156,21 @@ input:focus, textarea:focus, select:focus {
   border-radius: var(--r-sm);
 }
 .ins-kw-rank { font-size: 11px; color: var(--text-2); width: 16px; flex-shrink: 0; }
-.ins-kw-icon { font-size: 13px; flex-shrink: 0; }
+.ins-kw-type-btn {
+  background: rgba(0,0,0,.05);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.ins-kw-type-btn:hover { background: rgba(99,102,241,.2); }
 .ins-kw-label { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ins-kw-count { font-size: 11px; color: var(--text-2); white-space: nowrap; flex-shrink: 0; }
 .ins-kw-links { display: flex; gap: 4px; flex-shrink: 0; }

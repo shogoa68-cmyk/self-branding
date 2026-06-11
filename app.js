@@ -623,25 +623,22 @@ async function extractNoteKeywords(noteText) {
   return data.result?.items || [];
 }
 
-const TYPE_ICON = { person: '👤', keyword: '🔑', book: '📖', tool: '🛠️' };
+const TYPE_ICON  = { person: '👤', keyword: '🔑', book: '📖', tool: '🛠️' };
+const TYPES      = ['person', 'keyword', 'book', 'tool'];
+const TYPE_LABEL = { person: '人物', keyword: 'キーワード', book: '書籍', tool: 'ツール' };
+function cycleType(t) { return TYPES[(TYPES.indexOf(t) + 1) % TYPES.length]; }
+let insightsCache = null;
 
 function renderExtractedKeywords(items) {
   const chips = document.getElementById('extractChips');
-  chips.innerHTML = items.map((item, i) =>
-    `<button class="extract-chip" data-idx="${i}" data-label="${escAttr(item.label)}" data-type="${escAttr(item.type || 'keyword')}">
-      ${TYPE_ICON[item.type] || '🔍'} ${escHtml(item.label)}
-    </button>`
-  ).join('');
-
+  chips.innerHTML = items.map((item, i) => {
+    const t = item.type || 'keyword';
+    return `<div class="extract-chip" data-idx="${i}" data-label="${escAttr(item.label)}" data-type="${escAttr(t)}">
+      <button class="chip-type-btn" data-idx="${i}" title="${escAttr(TYPE_LABEL[t] || t)}をクリックで変更">${TYPE_ICON[t] || '🔍'}</button>
+      <span class="chip-label">${escHtml(item.label)}</span>
+    </div>`;
+  }).join('');
   document.getElementById('extractSearchPanel').hidden = true;
-
-  chips.querySelectorAll('.extract-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      chips.querySelectorAll('.extract-chip').forEach(c => c.classList.remove('active'));
-      chip.classList.add('active');
-      renderKeywordSearchPanel(chip.dataset.label);
-    });
-  });
 }
 
 function renderKeywordSearchPanel(keyword) {
@@ -745,13 +742,24 @@ async function renderInsightsTab() {
   const el = document.getElementById('insightsContent');
   if (!el) return;
   el.innerHTML = '<p class="insights-loading">読み込み中...</p>';
+  insightsCache = await loadInsightsHistory();
+  // 今日の最新メモリデータをマージ
+  const today = todayJST();
+  if (Object.keys(state.extractedItems).length > 0) {
+    const idx = insightsCache.findIndex(l => l.date === today);
+    if (idx >= 0) insightsCache[idx].extracted_items = state.extractedItems;
+    else insightsCache.unshift({ date: today, extracted_items: state.extractedItems });
+  }
+  renderInsightsContent(insightsCache);
+}
 
-  const logs = await loadInsightsHistory();
+function renderInsightsContent(logs) {
+  const el = document.getElementById('insightsContent');
+  if (!el) return;
 
-  // Aggregate all items
   const typeCounts = { person: 0, keyword: 0, book: 0, tool: 0 };
-  const labelMap   = {};  // label → { type, count }
-  const dateMap    = [];  // [{ date, items: [{type,label}] }]
+  const labelMap   = {};
+  const dateMap    = [];
 
   for (const log of logs) {
     const seen = new Map();
@@ -761,6 +769,7 @@ async function renderInsightsTab() {
         typeCounts[item.type] = (typeCounts[item.type] || 0) + 1;
         if (!labelMap[item.label]) labelMap[item.label] = { type: item.type, count: 0 };
         labelMap[item.label].count++;
+        labelMap[item.label].type = item.type; // keep latest type
         seen.set(item.label, item);
       }
     }
@@ -777,17 +786,12 @@ async function renderInsightsTab() {
   }
 
   const maxCount = Math.max(...Object.values(typeCounts));
-  const typeRows = [
-    { type: 'keyword', label: 'キーワード' },
-    { type: 'person',  label: '人物' },
-    { type: 'book',    label: '書籍' },
-    { type: 'tool',    label: 'ツール' },
-  ].map(({ type, label }) => {
+  const typeRows = TYPES.map(type => {
     const count = typeCounts[type] || 0;
     const pct   = maxCount ? Math.round(count / maxCount * 100) : 0;
     return `<div class="ins-type-row">
       <span class="ins-type-icon">${TYPE_ICON[type]}</span>
-      <span class="ins-type-label">${label}</span>
+      <span class="ins-type-label">${TYPE_LABEL[type]}</span>
       <div class="ins-type-bar-wrap"><div class="ins-type-bar" style="width:${pct}%"></div></div>
       <span class="ins-type-count">${count}件</span>
     </div>`;
@@ -797,11 +801,11 @@ async function renderInsightsTab() {
     .sort((a, b) => b[1].count - a[1].count)
     .slice(0, 10)
     .map(([label, { type, count }], i) => {
-      const gLink = `<a class="ins-kw-link" href="${escAttr(PLATFORMS.google.url(label))}" target="_blank" rel="noopener noreferrer">Google</a>`;
+      const gLink  = `<a class="ins-kw-link" href="${escAttr(PLATFORMS.google.url(label))}" target="_blank" rel="noopener noreferrer">Google</a>`;
       const ytLink = `<a class="ins-kw-link" href="${escAttr(PLATFORMS.youtube.url(label))}" target="_blank" rel="noopener noreferrer">YouTube</a>`;
       return `<div class="ins-kw-row">
         <span class="ins-kw-rank">${i + 1}</span>
-        <span class="ins-kw-icon">${TYPE_ICON[type] || '🔍'}</span>
+        <button class="ins-kw-type-btn" data-label="${escAttr(label)}" data-type="${escAttr(type)}" title="${escAttr(TYPE_LABEL[type] || type)}をクリックで変更">${TYPE_ICON[type] || '🔍'}</button>
         <span class="ins-kw-label">${escHtml(label)}</span>
         <span class="ins-kw-count">${count}回</span>
         <span class="ins-kw-links">${gLink}${ytLink}</span>
@@ -810,12 +814,12 @@ async function renderInsightsTab() {
 
   const timelineHtml = dateMap.slice(0, 14).map(({ date, items }) => {
     const d = new Date(date + 'T00:00:00');
-    const label = d.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+    const dateLabel = d.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
     const chips = items.map(item =>
       `<a class="ins-timeline-chip" href="${escAttr(PLATFORMS.google.url(item.label))}" target="_blank" rel="noopener noreferrer">${TYPE_ICON[item.type] || '🔍'} ${escHtml(item.label)}</a>`
     ).join('');
     return `<div class="ins-timeline-row">
-      <span class="ins-timeline-date">${label}</span>
+      <span class="ins-timeline-date">${dateLabel}</span>
       <div class="ins-timeline-chips">${chips}</div>
     </div>`;
   }).join('');
@@ -833,6 +837,25 @@ async function renderInsightsTab() {
       <h3 class="insights-section-title">日別履歴</h3>
       <div class="ins-timeline">${timelineHtml}</div>
     </div>`;
+}
+
+function correctKeywordType(label, newType) {
+  // 今日の state を更新
+  for (const key of Object.keys(state.extractedItems)) {
+    state.extractedItems[key] = (state.extractedItems[key] || []).map(item =>
+      item.label === label ? { ...item, type: newType } : item
+    );
+  }
+  // キャッシュを更新
+  for (const log of (insightsCache || [])) {
+    for (const key of Object.keys(log.extracted_items || {})) {
+      log.extracted_items[key] = (log.extracted_items[key] || []).map(item =>
+        item.label === label ? { ...item, type: newType } : item
+      );
+    }
+  }
+  saveNotesToDB();
+  renderInsightsContent(insightsCache || []);
 }
 
 // ─── Source Manager ───────────────────────────────────────────────────────────
@@ -1410,6 +1433,43 @@ async function init() {
     document.getElementById('noteExtractPanel').hidden = true;
     document.getElementById('extractSearchPanel').hidden = true;
     document.getElementById('noteInputArea').hidden = false;
+  });
+
+  // Extract chips: type cycling + search panel (event delegation)
+  document.getElementById('extractChips').addEventListener('click', e => {
+    const typeBtn = e.target.closest('.chip-type-btn');
+    const chip    = e.target.closest('.extract-chip');
+    if (!chip) return;
+
+    if (typeBtn) {
+      const idx  = +typeBtn.dataset.idx;
+      const next = cycleType(chip.dataset.type);
+      chip.dataset.type      = next;
+      typeBtn.textContent    = TYPE_ICON[next] || '🔍';
+      typeBtn.title          = `${TYPE_LABEL[next] || next}をクリックで変更`;
+      if (activeNoteKey !== null) {
+        const skey = scopedKey(activeNoteKey);
+        if (state.extractedItems[skey]?.[idx]) {
+          state.extractedItems[skey][idx] = { ...state.extractedItems[skey][idx], type: next };
+        }
+      }
+      return;
+    }
+
+    document.querySelectorAll('#extractChips .extract-chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    renderKeywordSearchPanel(chip.dataset.label);
+  });
+
+  // Insights tab: type correction (event delegation)
+  document.getElementById('insightsContent').addEventListener('click', e => {
+    const typeBtn = e.target.closest('.ins-kw-type-btn');
+    if (!typeBtn) return;
+    const next = cycleType(typeBtn.dataset.type);
+    typeBtn.dataset.type = next;
+    typeBtn.textContent  = TYPE_ICON[next] || '🔍';
+    typeBtn.title        = `${TYPE_LABEL[next] || next}をクリックで変更`;
+    correctKeywordType(typeBtn.dataset.label, next);
   });
 
   // Brand statement + pitch
