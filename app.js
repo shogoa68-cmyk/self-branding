@@ -160,7 +160,7 @@ async function loadTodayLog() {
   const today = todayJST();
   const { data } = await sb
     .from('daily_logs')
-    .select('content, completed_actions, notes')
+    .select('content, completed_actions, notes, extracted_items')
     .eq('user_id', currentUser.id)
     .eq('date', today)
     .maybeSingle();
@@ -181,6 +181,7 @@ async function loadTodayLog() {
   state.dailyActiveIdx   = suggestions.length - 1;
   state.dailyCompleted   = new Set(data.completed_actions || []);
   state.dailyNotes       = data.notes || {};
+  state.extractedItems   = data.extracted_items || {};
   renderSuggestionTabs();
   renderDailyInput(suggestions[state.dailyActiveIdx]);
 }
@@ -723,9 +724,115 @@ async function saveNotesToDB() {
   if (!currentUser) return;
   const today = todayJST();
   await sb.from('daily_logs').upsert(
-    { user_id: currentUser.id, date: today, notes: state.dailyNotes },
+    { user_id: currentUser.id, date: today, notes: state.dailyNotes, extracted_items: state.extractedItems },
     { onConflict: 'user_id,date' }
   );
+}
+
+// ─── Insights Tab ─────────────────────────────────────────────────────────────
+async function loadInsightsHistory() {
+  if (!currentUser) return [];
+  const { data } = await sb
+    .from('daily_logs')
+    .select('date, extracted_items')
+    .eq('user_id', currentUser.id)
+    .order('date', { ascending: false })
+    .limit(60);
+  return (data || []).filter(r => r.extracted_items && Object.keys(r.extracted_items).length > 0);
+}
+
+async function renderInsightsTab() {
+  const el = document.getElementById('insightsContent');
+  if (!el) return;
+  el.innerHTML = '<p class="insights-loading">読み込み中...</p>';
+
+  const logs = await loadInsightsHistory();
+
+  // Aggregate all items
+  const typeCounts = { person: 0, keyword: 0, book: 0, tool: 0 };
+  const labelMap   = {};  // label → { type, count }
+  const dateMap    = [];  // [{ date, items: [{type,label}] }]
+
+  for (const log of logs) {
+    const seen = new Map();
+    for (const items of Object.values(log.extracted_items || {})) {
+      if (!Array.isArray(items)) continue;
+      for (const item of items) {
+        typeCounts[item.type] = (typeCounts[item.type] || 0) + 1;
+        if (!labelMap[item.label]) labelMap[item.label] = { type: item.type, count: 0 };
+        labelMap[item.label].count++;
+        seen.set(item.label, item);
+      }
+    }
+    if (seen.size > 0) dateMap.push({ date: log.date, items: [...seen.values()] });
+  }
+
+  const total = Object.values(typeCounts).reduce((a, b) => a + b, 0);
+  if (total === 0) {
+    el.innerHTML = `<div class="insights-empty">
+      <p class="insights-empty-title">まだキーワードがありません</p>
+      <p class="insights-empty-sub">メモを書いて「🔍 深掘り」を使うと、ここに統計が表示されます。</p>
+    </div>`;
+    return;
+  }
+
+  const maxCount = Math.max(...Object.values(typeCounts));
+  const typeRows = [
+    { type: 'keyword', label: 'キーワード' },
+    { type: 'person',  label: '人物' },
+    { type: 'book',    label: '書籍' },
+    { type: 'tool',    label: 'ツール' },
+  ].map(({ type, label }) => {
+    const count = typeCounts[type] || 0;
+    const pct   = maxCount ? Math.round(count / maxCount * 100) : 0;
+    return `<div class="ins-type-row">
+      <span class="ins-type-icon">${TYPE_ICON[type]}</span>
+      <span class="ins-type-label">${label}</span>
+      <div class="ins-type-bar-wrap"><div class="ins-type-bar" style="width:${pct}%"></div></div>
+      <span class="ins-type-count">${count}件</span>
+    </div>`;
+  }).join('');
+
+  const topKeywords = Object.entries(labelMap)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 10)
+    .map(([label, { type, count }], i) => {
+      const gLink = `<a class="ins-kw-link" href="${escAttr(PLATFORMS.google.url(label))}" target="_blank" rel="noopener noreferrer">Google</a>`;
+      const ytLink = `<a class="ins-kw-link" href="${escAttr(PLATFORMS.youtube.url(label))}" target="_blank" rel="noopener noreferrer">YouTube</a>`;
+      return `<div class="ins-kw-row">
+        <span class="ins-kw-rank">${i + 1}</span>
+        <span class="ins-kw-icon">${TYPE_ICON[type] || '🔍'}</span>
+        <span class="ins-kw-label">${escHtml(label)}</span>
+        <span class="ins-kw-count">${count}回</span>
+        <span class="ins-kw-links">${gLink}${ytLink}</span>
+      </div>`;
+    }).join('');
+
+  const timelineHtml = dateMap.slice(0, 14).map(({ date, items }) => {
+    const d = new Date(date + 'T00:00:00');
+    const label = d.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+    const chips = items.map(item =>
+      `<a class="ins-timeline-chip" href="${escAttr(PLATFORMS.google.url(item.label))}" target="_blank" rel="noopener noreferrer">${TYPE_ICON[item.type] || '🔍'} ${escHtml(item.label)}</a>`
+    ).join('');
+    return `<div class="ins-timeline-row">
+      <span class="ins-timeline-date">${label}</span>
+      <div class="ins-timeline-chips">${chips}</div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="insights-section">
+      <h3 class="insights-section-title">タイプ別分布 <span class="insights-total">計 ${total}件</span></h3>
+      <div class="ins-type-list">${typeRows}</div>
+    </div>
+    <div class="insights-section">
+      <h3 class="insights-section-title">よく出るキーワード TOP${Math.min(10, Object.keys(labelMap).length)}</h3>
+      <div class="ins-kw-list">${topKeywords}</div>
+    </div>
+    <div class="insights-section">
+      <h3 class="insights-section-title">日別履歴</h3>
+      <div class="ins-timeline">${timelineHtml}</div>
+    </div>`;
 }
 
 // ─── Source Manager ───────────────────────────────────────────────────────────
@@ -1157,8 +1264,9 @@ function switchTab(name) {
   document.querySelectorAll('.tab-content').forEach(sec => {
     sec.classList.toggle('active', sec.id === `tab-${name}`);
   });
-  if (name === 'hub')  renderHub();
-  if (name === 'plan') { updateChecklistProgress(); refreshPlanStats(); loadAndRenderCalendar(); }
+  if (name === 'hub')      renderHub();
+  if (name === 'insights') renderInsightsTab();
+  if (name === 'plan')     { updateChecklistProgress(); refreshPlanStats(); loadAndRenderCalendar(); }
 }
 
 // ─── Form binding ─────────────────────────────────────────────────────────────
